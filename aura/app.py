@@ -5,7 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from textual.app import App, ComposeResult
-from textual.widgets import Footer, Header
+from textual.containers import Vertical
+from textual.screen import ModalScreen
+from textual.widgets import Footer, Header, Input as TextInput, Label
 
 from aura.ai_service import AIService
 from aura.config import AppConfig
@@ -13,7 +15,53 @@ from aura.pdf_engine import PDFEngine
 from aura.widgets.ai_sidebar import AISidebar
 from aura.widgets.file_dialog import FileDialog
 from aura.widgets.pdf_viewer import PDFViewer
+from aura.widgets.search_dialog import SearchDialog
 from aura.widgets.toc_panel import TOCPanel
+
+
+class _GoToPageScreen(ModalScreen[int | None]):
+    """Simple modal to enter a page number."""
+
+    DEFAULT_CSS = """
+    _GoToPageScreen {
+        align: center middle;
+    }
+
+    _GoToPageScreen #goto-container {
+        width: 40;
+        height: auto;
+        border: thick $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    """
+
+    BINDINGS = [("escape", "cancel", "Cancel")]
+
+    def __init__(self, total_pages: int) -> None:
+        super().__init__()
+        self._total = total_pages
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="goto-container"):
+            yield Label(f"Go to page (1-{self._total}):")
+            yield TextInput(placeholder="Page number", id="goto-input")
+
+    def on_mount(self) -> None:
+        self.query_one("#goto-input", TextInput).focus()
+
+    def on_input_submitted(self, event: TextInput.Submitted) -> None:
+        try:
+            page = int(event.value)
+            if 1 <= page <= self._total:
+                self.dismiss(page - 1)
+            else:
+                self.notify(f"Page must be 1-{self._total}", severity="error")
+        except ValueError:
+            self.notify("Enter a valid number", severity="error")
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
 
 
 class AuraApp(App):
@@ -27,6 +75,8 @@ class AuraApp(App):
         ("o", "open_file", "Open"),
         ("t", "toggle_toc", "TOC"),
         ("a", "toggle_ai", "AI"),
+        ("slash", "search", "Search"),
+        ("g", "go_to_page", "Go to"),
         ("right,l", "next_page", "Next"),
         ("left,h", "prev_page", "Prev"),
     ]
@@ -118,6 +168,42 @@ class AuraApp(App):
             sidebar.end_ai_response()
 
     # -- Actions --
+
+    def action_search(self) -> None:
+        viewer = self.query_one(PDFViewer)
+        if not viewer.engine:
+            self.notify("No PDF loaded.", severity="warning")
+            return
+        dialog = SearchDialog()
+        self.push_screen(dialog, callback=self._on_search_result)
+
+    def _on_search_result(self, page: int | None) -> None:
+        if page is not None:
+            self.query_one(PDFViewer).go_to_page(page)
+
+    def on_search_dialog_search_requested(
+        self, event: SearchDialog.SearchRequested
+    ) -> None:
+        viewer = self.query_one(PDFViewer)
+        if viewer.engine:
+            results = viewer.engine.search_text(event.query)
+            for screen in self.screen_stack:
+                if isinstance(screen, SearchDialog):
+                    screen.show_results(results)
+                    break
+
+    def action_go_to_page(self) -> None:
+        viewer = self.query_one(PDFViewer)
+        if not viewer.engine:
+            return
+        self.push_screen(
+            _GoToPageScreen(viewer.engine.page_count),
+            callback=self._on_goto_page,
+        )
+
+    def _on_goto_page(self, page: int | None) -> None:
+        if page is not None:
+            self.query_one(PDFViewer).go_to_page(page)
 
     def action_open_file(self) -> None:
         self.push_screen(FileDialog(), callback=self._on_file_selected)

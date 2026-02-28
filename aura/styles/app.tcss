@@ -13,3 +13,7 @@ Footer {
 PDFViewer {
     width: 1fr;
 }
+
+Markdown {
+    padding: 1 2;
+}

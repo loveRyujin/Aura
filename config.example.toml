@@ -1,6 +1,19 @@
+# Aura AI Configuration
+# Copy this file to aura.toml or ~/.config/aura/aura.toml
+
 [ai]
+# LiteLLM model string (supports OpenAI, Anthropic, Ollama, etc.)
+# Examples: "gpt-4o-mini", "claude-3-haiku-20240307", "ollama/llama3"
 model = "gpt-4o-mini"
+
+# API key for the provider (or set via environment variable)
 api_key = ""
+
+# Custom API base URL (optional, for self-hosted or proxy endpoints)
 api_base = ""
+
+# Response creativity (0.0 = deterministic, 1.0 = creative)
 temperature = 0.7
+
+# Maximum tokens in AI response
 max_tokens = 2048
