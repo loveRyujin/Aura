@@ -62,7 +62,7 @@ class AIService:
         self._history.append(ChatMessage(role="user", content=user_input))
 
         kwargs: dict = {
-            "model": self._config.model,
+            "model": self._config.resolved_model,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
             "temperature": self._config.temperature,
             "max_tokens": self._config.max_tokens,
@@ -70,8 +70,9 @@ class AIService:
         }
         if self._config.api_key:
             kwargs["api_key"] = self._config.api_key
-        if self._config.api_base:
-            kwargs["api_base"] = self._config.api_base
+        api_base = self._config.resolved_api_base
+        if api_base:
+            kwargs["api_base"] = api_base
 
         full_response: list[str] = []
         response = await acompletion(**kwargs)

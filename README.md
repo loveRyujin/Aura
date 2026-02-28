@@ -66,16 +66,35 @@ python -m aura
 
 Create an `aura.toml` in the project directory or `~/.config/aura/aura.toml`:
 
+**OpenAI (default):**
+
 ```toml
 [ai]
+provider = "openai"
 model = "gpt-4o-mini"
-api_key = "your-api-key"
-api_base = ""           # optional, for custom endpoints
-temperature = 0.7
-max_tokens = 2048
+api_key = "sk-..."
 ```
 
-Aura uses [LiteLLM](https://docs.litellm.ai/) under the hood, supporting 100+ LLM providers including OpenAI, Anthropic, Ollama, and more. Set the `model` field to any LiteLLM-compatible model string.
+**Ollama (local, no API key needed):**
+
+```toml
+[ai]
+provider = "ollama"
+model = "llama3"        # or qwen2, mistral, gemma2, etc.
+```
+
+**Anthropic:**
+
+```toml
+[ai]
+provider = "anthropic"
+model = "claude-3-haiku-20240307"
+api_key = "sk-ant-..."
+```
+
+The `provider` field controls how the model string is resolved. For Ollama, `api_base` defaults to `http://localhost:11434` and the `ollama/` prefix is auto-added. See `config.example.toml` for all options.
+
+Aura uses [LiteLLM](https://docs.litellm.ai/) under the hood, supporting 100+ LLM providers.
 
 ## Tech Stack
 

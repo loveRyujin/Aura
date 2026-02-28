@@ -13,13 +13,37 @@ DEFAULT_CONFIG_PATHS = [
 ]
 
 
+PROVIDER_DEFAULTS: dict[str, dict[str, str]] = {
+    "ollama": {"api_base": "http://localhost:11434", "model": "llama3"},
+    "openai": {"api_base": "", "model": "gpt-4o-mini"},
+    "anthropic": {"api_base": "", "model": "claude-3-haiku-20240307"},
+}
+
+
 @dataclass
 class AIConfig:
+    provider: str = "openai"
     model: str = "gpt-4o-mini"
     api_key: str = ""
     api_base: str = ""
     temperature: float = 0.7
     max_tokens: int = 2048
+
+    @property
+    def resolved_model(self) -> str:
+        """Return the LiteLLM model string with provider prefix when needed."""
+        if self.provider == "ollama" and not self.model.startswith("ollama/"):
+            return f"ollama/{self.model}"
+        if self.provider == "anthropic" and not self.model.startswith("anthropic/"):
+            return self.model
+        return self.model
+
+    @property
+    def resolved_api_base(self) -> str:
+        """Return api_base, falling back to provider defaults."""
+        if self.api_base:
+            return self.api_base
+        return PROVIDER_DEFAULTS.get(self.provider, {}).get("api_base", "")
 
 
 @dataclass
@@ -43,8 +67,11 @@ class AppConfig:
             data = tomllib.load(f)
 
         ai_data = data.get("ai", {})
+        provider = ai_data.get("provider", AIConfig.provider)
+        defaults = PROVIDER_DEFAULTS.get(provider, {})
         ai = AIConfig(
-            model=ai_data.get("model", AIConfig.model),
+            provider=provider,
+            model=ai_data.get("model", defaults.get("model", AIConfig.model)),
             api_key=ai_data.get("api_key", AIConfig.api_key),
             api_base=ai_data.get("api_base", AIConfig.api_base),
             temperature=ai_data.get("temperature", AIConfig.temperature),
