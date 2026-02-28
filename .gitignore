@@ -13,3 +13,5 @@ aura.toml
 *.log
 .mypy_cache/
 .ruff_cache/
+*.spec
+

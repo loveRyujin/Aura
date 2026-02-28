@@ -39,14 +39,32 @@ pip install -e .
 ## Usage
 
 ```bash
-# Activate the virtual environment
 source .venv/bin/activate
 
-# Open a PDF file directly
+# Method 1: CLI command (after pip install -e .)
+aura path/to/file.pdf
+
+# Method 2: Python module
 python -m aura path/to/file.pdf
 
-# Or launch and use the file browser
-python -m aura
+# Launch without file (use 'o' to open file browser)
+aura
+```
+
+## Build Standalone Executable
+
+Package Aura as a single binary that runs without Python installed:
+
+```bash
+# Install build dependency
+pip install pyinstaller
+# Or: pip install -e ".[build]"
+
+# Build the executable
+python build.py
+
+# The binary is at dist/aura
+./dist/aura path/to/file.pdf
 ```
 
 ## Keybindings

@@ -70,6 +70,14 @@ class AuraApp(App):
     TITLE = "Aura PDF Reader"
     CSS_PATH = "styles/app.tcss"
 
+    DEFAULT_CSS = """
+    Screen { layout: horizontal; }
+    Header { dock: top; }
+    Footer { dock: bottom; }
+    PDFViewer { width: 1fr; }
+    Markdown { padding: 1 2; }
+    """
+
     BINDINGS = [
         ("q", "quit", "Quit"),
         ("o", "open_file", "Open"),
