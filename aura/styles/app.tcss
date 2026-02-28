@@ -9,3 +9,7 @@ Header {
 Footer {
     dock: bottom;
 }
+
+PDFViewer {
+    width: 1fr;
+}
