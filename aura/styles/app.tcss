@@ -1,0 +1,11 @@
+Screen {
+    layout: horizontal;
+}
+
+Header {
+    dock: top;
+}
+
+Footer {
+    dock: bottom;
+}

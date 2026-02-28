@@ -1,0 +1,18 @@
+[project]
+name = "aura"
+version = "0.1.0"
+description = "A modern TUI PDF reader with AI assistant"
+requires-python = ">=3.13"
+dependencies = [
+    "textual>=2.0.0",
+    "pymupdf>=1.25.0",
+    "pymupdf4llm>=0.0.17",
+    "litellm>=1.40.0",
+]
+
+[project.scripts]
+aura = "aura.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
