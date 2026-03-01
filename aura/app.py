@@ -126,7 +126,7 @@ class AuraApp(App):
 
     # -- Event handlers --
 
-    def on_pdf_viewer_page_changed(self, event: PDFViewer.PageChanged) -> None:
+    def on_pdfviewer_page_changed(self, event: PDFViewer.PageChanged) -> None:
         viewer = self.query_one(PDFViewer)
         if viewer.engine:
             self.sub_title = (
@@ -134,10 +134,10 @@ class AuraApp(App):
                 f"p.{event.page + 1}/{event.total}"
             )
 
-    def on_toc_panel_entry_selected(self, event: TOCPanel.EntrySelected) -> None:
+    def on_tocpanel_entry_selected(self, event: TOCPanel.EntrySelected) -> None:
         self.query_one(PDFViewer).go_to_page(event.page)
 
-    def on_ai_sidebar_quick_command_requested(
+    def on_aisidebar_quick_command_requested(
         self, event: AISidebar.QuickCommandRequested
     ) -> None:
         page_content = self._get_page_context()
@@ -150,7 +150,7 @@ class AuraApp(App):
             self._ai_service.quick_command(event.command, page_content)
         )
 
-    def on_ai_sidebar_chat_message_sent(
+    def on_aisidebar_chat_message_sent(
         self, event: AISidebar.ChatMessageSent
     ) -> None:
         sidebar = self.query_one(AISidebar)
