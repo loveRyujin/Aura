@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from enum import Enum
 
-from rich.text import Text
+import textual_image.renderable  # noqa: F401 — detect terminal caps before App starts
+
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from textual.message import Message
@@ -12,7 +13,8 @@ from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Label, Markdown, Static
 
-from aura.image_render import pixmap_to_rich_text
+from textual_image.widget import Image as TIImage
+
 from aura.pdf_engine import PDFEngine
 
 
@@ -22,8 +24,6 @@ class ViewMode(Enum):
 
 
 class PageIndicator(Static):
-    """Displays current page number, total pages, and view mode."""
-
     page = reactive(0)
     total = reactive(0)
     mode = reactive(ViewMode.TEXT)
@@ -33,20 +33,6 @@ class PageIndicator(Static):
             return "No file loaded"
         mode_label = "TXT" if self.mode == ViewMode.TEXT else "IMG"
         return f" Page {self.page + 1}/{self.total}  [{mode_label}]  [v] toggle view "
-
-
-class ImageView(Static):
-    """Displays a rasterized PDF page as terminal art."""
-
-    DEFAULT_CSS = """
-    ImageView {
-        width: auto;
-        height: auto;
-    }
-    """
-
-    def set_content(self, rich_text: Text) -> None:
-        self.update(rich_text)
 
 
 class PDFViewer(Widget):
@@ -73,6 +59,10 @@ class PDFViewer(Widget):
         content-align: center middle;
         color: $text-muted;
     }
+    PDFViewer #pdf-image {
+        width: 1fr;
+        height: auto;
+    }
     """
 
     class PageChanged(Message):
@@ -92,7 +82,7 @@ class PDFViewer(Widget):
         yield Label("Press [b]o[/b] to open a PDF file", id="welcome-label")
         with VerticalScroll(id="pdf-scroll"):
             yield Markdown("", id="pdf-content")
-            yield ImageView(id="pdf-image")
+            yield TIImage(id="pdf-image")
         yield PageIndicator(id="page-bar")
 
     def on_mount(self) -> None:
@@ -139,7 +129,7 @@ class PDFViewer(Widget):
             return
 
         md_widget = self.query_one("#pdf-content", Markdown)
-        img_widget = self.query_one("#pdf-image", ImageView)
+        img_widget = self.query_one("#pdf-image", TIImage)
 
         if self.view_mode == ViewMode.TEXT:
             md_widget.display = True
@@ -149,12 +139,32 @@ class PDFViewer(Widget):
         else:
             md_widget.display = False
             img_widget.display = True
-            scroll_area = self.query_one("#pdf-scroll")
-            render_width = max(40, scroll_area.size.width - 2)
-            pix = self._engine.render_page_pixmap(self.current_page, render_width * 2)
-            rich_text = pixmap_to_rich_text(pix)
-            img_widget.set_content(rich_text)
+            self.app.run_worker(self._render_image_async(), exclusive=True)
 
+        self.query_one("#pdf-scroll").scroll_home(animate=False)
+
+    async def _render_image_async(self) -> None:
+        """Render PDF page via textual-image (auto-selects TGP/Sixel/Unicode)."""
+        if not self._engine:
+            return
+
+        import asyncio
+
+        from PIL import Image as PILImage
+
+        scroll_area = self.query_one("#pdf-scroll")
+        render_width = max(800, scroll_area.size.width * 12)
+        page = self.current_page
+        engine = self._engine
+
+        def _cpu_work() -> PILImage.Image:
+            pix = engine.render_page_pixmap(page, render_width)
+            return PILImage.frombytes("RGB", (pix.width, pix.height), bytes(pix.samples))
+
+        pil_img = await asyncio.to_thread(_cpu_work)
+
+        img_widget = self.query_one("#pdf-image", TIImage)
+        img_widget.image = pil_img
         self.query_one("#pdf-scroll").scroll_home(animate=False)
 
     def next_page(self) -> None:

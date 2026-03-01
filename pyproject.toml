@@ -5,6 +5,8 @@ description = "A modern TUI PDF reader with AI assistant"
 requires-python = ">=3.13"
 dependencies = [
     "textual>=2.0.0",
+    "textual-image[textual]>=0.8.0",
+    "pillow>=10.3.0",
     "pymupdf>=1.25.0",
     "pymupdf4llm>=0.0.17",
     "pymupdf-layout>=1.27.0",
