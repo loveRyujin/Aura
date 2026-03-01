@@ -71,7 +71,8 @@ class AuraApp(App):
     CSS_PATH = "styles/app.tcss"
 
     DEFAULT_CSS = """
-    Screen { layout: horizontal; }
+    Screen { layout: horizontal; scrollbar-size: 1 1; }
+    * { scrollbar-size: 1 1; }
     Header { dock: top; }
     Footer { dock: bottom; }
     PDFViewer { width: 1fr; }
