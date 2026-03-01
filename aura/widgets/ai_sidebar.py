@@ -1,15 +1,19 @@
-"""AI assistant sidebar - clean chat interface, keyboard driven."""
+"""AI assistant sidebar - clean chat interface, keyboard driven, drag-resizable."""
 
 from __future__ import annotations
 
 from textual.app import ComposeResult
-from textual.containers import VerticalScroll
+from textual.containers import Horizontal, VerticalScroll
+from textual.events import MouseDown, MouseMove, MouseUp
 from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Input, Label, Static
 
 from aura.ai_service import ContextScope
+
+MIN_WIDTH = 30
+MAX_WIDTH_RATIO = 0.7
 
 
 class ChatBubble(Static):
@@ -36,21 +40,76 @@ class ChatBubble(Static):
     """
 
 
+class ResizeHandle(Widget):
+    """A draggable resize handle on the left edge of the sidebar."""
+
+    DEFAULT_CSS = """
+    ResizeHandle {
+        width: 1;
+        height: 100%;
+        dock: left;
+        background: $primary-darken-1;
+    }
+    ResizeHandle:hover {
+        background: $accent;
+    }
+    ResizeHandle.dragging {
+        background: $accent;
+    }
+    """
+
+    class Resized(Message):
+        """Emitted during drag with the new desired total width."""
+
+        def __init__(self, width: int) -> None:
+            super().__init__()
+            self.width = width
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._dragging = False
+
+    def on_mouse_down(self, event: MouseDown) -> None:
+        self._dragging = True
+        self.add_class("dragging")
+        self.capture_mouse()
+        event.stop()
+
+    def on_mouse_move(self, event: MouseMove) -> None:
+        if not self._dragging:
+            return
+        screen_width = self.screen.size.width
+        new_width = screen_width - event.screen_x
+        self.post_message(self.Resized(new_width))
+        event.stop()
+
+    def on_mouse_up(self, event: MouseUp) -> None:
+        if self._dragging:
+            self._dragging = False
+            self.remove_class("dragging")
+            self.release_mouse()
+            event.stop()
+
+    def render(self) -> str:
+        return "┃"
+
+
 class AISidebar(Widget):
-    """Keyboard-driven AI chat sidebar. No buttons — just type and talk."""
+    """Keyboard-driven AI chat sidebar with drag-to-resize."""
 
     DEFAULT_CSS = """
     AISidebar {
         width: 50;
         dock: right;
-        border-left: solid $primary;
-        layout: vertical;
+        layout: horizontal;
     }
     AISidebar.hidden {
         display: none;
     }
-    AISidebar.wide {
-        width: 80;
+
+    AISidebar #sidebar-body {
+        width: 1fr;
+        layout: vertical;
     }
 
     AISidebar #scope-indicator {
@@ -100,11 +159,19 @@ class AISidebar(Widget):
         self._ai_tokens: list[str] = []
 
     def compose(self) -> ComposeResult:
-        yield Label("Page ← [s] switch scope", id="scope-indicator")
-        with VerticalScroll(id="chat-scroll"):
-            yield Label("Type a question below to start.", id="chat-empty")
-        yield Label("", id="status-line")
-        yield Input(placeholder="Ask about this page...", id="ai-input")
+        yield ResizeHandle()
+        with Widget(id="sidebar-body"):
+            yield Label("Page ← [s] switch scope", id="scope-indicator")
+            with VerticalScroll(id="chat-scroll"):
+                yield Label("Type a question below to start.", id="chat-empty")
+            yield Label("", id="status-line")
+            yield Input(placeholder="Ask about this page...", id="ai-input")
+
+    def on_resize_handle_resized(self, event: ResizeHandle.Resized) -> None:
+        screen_width = self.screen.size.width
+        max_width = int(screen_width * MAX_WIDTH_RATIO)
+        new_width = max(MIN_WIDTH, min(event.width, max_width))
+        self.styles.width = new_width
 
     def watch_scope(self, value: ContextScope) -> None:
         label = "Page" if value == ContextScope.CURRENT_PAGE else "Book"
@@ -132,7 +199,7 @@ class AISidebar(Widget):
         event.input.clear()
         self.post_message(self.ChatMessageSent(text, self.scope))
 
-    # -- Chat display methods (called by App) --
+    # -- Chat display --
 
     def _hide_empty(self) -> None:
         empty = self.query_one("#chat-empty", Label)

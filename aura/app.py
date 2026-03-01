@@ -83,7 +83,6 @@ class AuraApp(App):
         ("o", "open_file", "Open"),
         ("t", "toggle_toc", "TOC"),
         ("a", "toggle_ai", "AI"),
-        ("A", "resize_ai", "AI±"),
         ("s", "toggle_scope", "Scope"),
         ("slash", "search", "Search"),
         ("g", "go_to_page", "Go to"),
@@ -229,9 +228,6 @@ class AuraApp(App):
 
     def action_toggle_ai(self) -> None:
         self.query_one(AISidebar).toggle()
-
-    def action_resize_ai(self) -> None:
-        self.query_one(AISidebar).toggle_class("wide")
 
     def action_toggle_scope(self) -> None:
         self.query_one(AISidebar).toggle_scope()
