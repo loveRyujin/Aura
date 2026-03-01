@@ -66,6 +66,14 @@ class PDFEngine:
         pages = list(range(start, end))
         return pymupdf4llm.to_markdown(self._doc, pages=pages)
 
+    def render_page_pixmap(self, page_num: int, width: int) -> pymupdf.Pixmap:
+        """Rasterize a page to a Pixmap scaled to fit the given width in pixels."""
+        page = self._doc[page_num]
+        page_rect = page.rect
+        zoom = width / page_rect.width
+        mat = pymupdf.Matrix(zoom, zoom)
+        return page.get_pixmap(matrix=mat, alpha=False)
+
     def search_text(self, query: str) -> list[tuple[int, str]]:
         """Search all pages for query, return list of (page_num, snippet)."""
         results: list[tuple[int, str]] = []
