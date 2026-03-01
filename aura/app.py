@@ -9,7 +9,7 @@ from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Footer, Header, Input as TextInput, Label
 
-from aura.ai_service import AIService
+from aura.ai_service import AIService, ContextScope
 from aura.config import AppConfig
 from aura.pdf_engine import PDFEngine
 from aura.widgets.ai_sidebar import AISidebar
@@ -83,6 +83,7 @@ class AuraApp(App):
         ("o", "open_file", "Open"),
         ("t", "toggle_toc", "TOC"),
         ("a", "toggle_ai", "AI"),
+        ("A", "resize_ai", "AI Size"),
         ("slash", "search", "Search"),
         ("g", "go_to_page", "Go to"),
         ("right,l", "next_page", "Next"),
@@ -118,7 +119,7 @@ class AuraApp(App):
         toc_entries = engine.get_toc()
         toc_panel.load_toc(toc_entries)
 
-        self._ai_service.clear_history()
+        self._ai_service.clear_all()
         self.sub_title = f"{engine.filename}  p.1/{engine.page_count}"
 
     def _get_page_context(self) -> str:
@@ -137,17 +138,36 @@ class AuraApp(App):
     def on_tocpanel_entry_selected(self, event: TOCPanel.EntrySelected) -> None:
         self.query_one(PDFViewer).go_to_page(event.page)
 
+    def on_aisidebar_book_context_requested(
+        self, event: AISidebar.BookContextRequested
+    ) -> None:
+        viewer = self.query_one(PDFViewer)
+        if viewer.engine and not self._ai_service.has_book_context:
+            self.notify("Loading full book context...", severity="information")
+            self.run_worker(self._load_book_context(), exclusive=False)
+
+    async def _load_book_context(self) -> None:
+        viewer = self.query_one(PDFViewer)
+        if viewer.engine:
+            text = viewer.engine.get_full_text(max_pages=100)
+            self._ai_service.set_book_context(text)
+            self.notify("Book context loaded.", severity="information")
+
     def on_aisidebar_quick_command_requested(
         self, event: AISidebar.QuickCommandRequested
     ) -> None:
         page_content = self._get_page_context()
-        if not page_content:
+        if not page_content and event.scope == ContextScope.CURRENT_PAGE:
             self.query_one(AISidebar).show_error("No PDF page loaded.")
             return
+        if event.scope == ContextScope.FULL_BOOK and not self._ai_service.has_book_context:
+            self.query_one(AISidebar).show_error("Book context not loaded. Click 'Book' first.")
+            return
         sidebar = self.query_one(AISidebar)
-        sidebar.append_user_message(f"[{event.command.value}]")
+        scope_label = "book" if event.scope == ContextScope.FULL_BOOK else "page"
+        sidebar.append_user_message(f"[{event.command.value}] ({scope_label})")
         self._run_ai_stream(
-            self._ai_service.quick_command(event.command, page_content)
+            self._ai_service.quick_command(event.command, page_content, event.scope)
         )
 
     def on_aisidebar_chat_message_sent(
@@ -157,7 +177,7 @@ class AuraApp(App):
         sidebar.append_user_message(event.text)
         page_context = self._get_page_context()
         self._run_ai_stream(
-            self._ai_service.stream_response(event.text, page_context)
+            self._ai_service.stream_response(event.text, page_context, event.scope)
         )
 
     def _run_ai_stream(self, stream) -> None:
@@ -225,6 +245,9 @@ class AuraApp(App):
 
     def action_toggle_ai(self) -> None:
         self.query_one(AISidebar).toggle()
+
+    def action_resize_ai(self) -> None:
+        self.query_one(AISidebar).toggle_class("wide")
 
     def action_next_page(self) -> None:
         self.query_one(PDFViewer).next_page()

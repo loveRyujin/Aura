@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 
 from litellm import acompletion
@@ -19,6 +19,11 @@ SYSTEM_PROMPT = (
 )
 
 
+class ContextScope(Enum):
+    CURRENT_PAGE = "current_page"
+    FULL_BOOK = "full_book"
+
+
 class QuickCommand(Enum):
     SUMMARIZE = "summarize"
     KEY_POINTS = "key_points"
@@ -26,15 +31,15 @@ class QuickCommand(Enum):
 
 
 COMMAND_PROMPTS = {
-    QuickCommand.SUMMARIZE: "Please summarize the following page content concisely:\n\n{content}",
-    QuickCommand.KEY_POINTS: "Extract the key points from the following page content as a bullet list:\n\n{content}",
-    QuickCommand.TRANSLATE: "Translate the following page content to Chinese (if already Chinese, translate to English):\n\n{content}",
+    QuickCommand.SUMMARIZE: "Please summarize the following content concisely:\n\n{content}",
+    QuickCommand.KEY_POINTS: "Extract the key points from the following content as a bullet list:\n\n{content}",
+    QuickCommand.TRANSLATE: "Translate the following content to Chinese (if already Chinese, translate to English):\n\n{content}",
 }
 
 
 @dataclass
 class ChatMessage:
-    role: str  # "user" | "assistant" | "system"
+    role: str
     content: str
 
 
@@ -44,21 +49,36 @@ class AIService:
     def __init__(self, config: AIConfig) -> None:
         self._config = config
         self._history: list[ChatMessage] = []
+        self._book_context: str = ""
 
     @property
     def history(self) -> list[ChatMessage]:
         return self._history
 
+    def set_book_context(self, text: str) -> None:
+        """Cache the full book text for whole-book queries."""
+        self._book_context = text
+
+    @property
+    def has_book_context(self) -> bool:
+        return bool(self._book_context)
+
     def clear_history(self) -> None:
         self._history.clear()
+
+    def clear_all(self) -> None:
+        self._history.clear()
+        self._book_context = ""
 
     async def stream_response(
         self,
         user_input: str,
         page_context: str = "",
+        scope: ContextScope = ContextScope.CURRENT_PAGE,
     ) -> AsyncIterator[str]:
         """Stream an AI response token by token."""
-        messages = self._build_messages(user_input, page_context)
+        context = self._resolve_context(page_context, scope)
+        messages = self._build_messages(user_input, context)
         self._history.append(ChatMessage(role="user", content=user_input))
 
         kwargs: dict = {
@@ -90,23 +110,32 @@ class AIService:
         self,
         command: QuickCommand,
         page_content: str,
+        scope: ContextScope = ContextScope.CURRENT_PAGE,
     ) -> AsyncIterator[str]:
-        """Execute a predefined quick command with page content."""
-        prompt = COMMAND_PROMPTS[command].format(content=page_content)
+        """Execute a predefined quick command."""
+        context = self._resolve_context(page_content, scope)
+        prompt = COMMAND_PROMPTS[command].format(content=context)
         async for token in self.stream_response(prompt, page_context=""):
             yield token
 
+    def _resolve_context(self, page_context: str, scope: ContextScope) -> str:
+        if scope == ContextScope.FULL_BOOK and self._book_context:
+            return self._book_context
+        return page_context
+
     def _build_messages(
-        self, user_input: str, page_context: str
+        self, user_input: str, context: str
     ) -> list[ChatMessage]:
         messages = [ChatMessage(role="system", content=SYSTEM_PROMPT)]
 
-        if page_context:
-            context_msg = ChatMessage(
+        if context:
+            # Truncate to avoid exceeding model context window
+            truncated = context[:32000] if len(context) > 32000 else context
+            label = "Document content" if len(context) > 5000 else "Current page content"
+            messages.append(ChatMessage(
                 role="system",
-                content=f"Current page content:\n\n{page_context}",
-            )
-            messages.append(context_msg)
+                content=f"{label}:\n\n{truncated}",
+            ))
 
         for msg in self._history[-10:]:
             messages.append(msg)

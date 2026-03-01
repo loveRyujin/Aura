@@ -53,6 +53,19 @@ class PDFEngine:
         """Return plain text for a page (for AI context, fallback)."""
         return self._doc[page_num].get_text()
 
+    def get_full_text(self, max_pages: int | None = None) -> str:
+        """Return Markdown text for the entire document (or first N pages)."""
+        total = min(max_pages, self.page_count) if max_pages else self.page_count
+        pages = list(range(total))
+        return pymupdf4llm.to_markdown(self._doc, pages=pages)
+
+    def get_page_range_text(self, start: int, end: int) -> str:
+        """Return Markdown for a range of pages [start, end) (0-indexed)."""
+        start = max(0, start)
+        end = min(end, self.page_count)
+        pages = list(range(start, end))
+        return pymupdf4llm.to_markdown(self._doc, pages=pages)
+
     def search_text(self, query: str) -> list[tuple[int, str]]:
         """Search all pages for query, return list of (page_num, snippet)."""
         results: list[tuple[int, str]] = []
