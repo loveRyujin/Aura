@@ -40,27 +40,25 @@ class ChatBubble(Static):
     """
 
 
-class ResizeHandle(Widget):
+class SidebarDragHandle(Widget):
     """A draggable resize handle on the left edge of the sidebar."""
 
     DEFAULT_CSS = """
-    ResizeHandle {
+    SidebarDragHandle {
         width: 1;
         height: 100%;
         dock: left;
         background: $primary-darken-1;
     }
-    ResizeHandle:hover {
+    SidebarDragHandle:hover {
         background: $accent;
     }
-    ResizeHandle.dragging {
+    SidebarDragHandle.-active {
         background: $accent;
     }
     """
 
     class Resized(Message):
-        """Emitted during drag with the new desired total width."""
-
         def __init__(self, width: int) -> None:
             super().__init__()
             self.width = width
@@ -71,22 +69,21 @@ class ResizeHandle(Widget):
 
     def on_mouse_down(self, event: MouseDown) -> None:
         self._dragging = True
-        self.add_class("dragging")
+        self.add_class("-active")
         self.capture_mouse()
         event.stop()
 
     def on_mouse_move(self, event: MouseMove) -> None:
         if not self._dragging:
             return
-        screen_width = self.screen.size.width
-        new_width = screen_width - event.screen_x
+        new_width = self.screen.size.width - event.screen_x
         self.post_message(self.Resized(new_width))
         event.stop()
 
     def on_mouse_up(self, event: MouseUp) -> None:
         if self._dragging:
             self._dragging = False
-            self.remove_class("dragging")
+            self.remove_class("-active")
             self.release_mouse()
             event.stop()
 
@@ -159,7 +156,7 @@ class AISidebar(Widget):
         self._ai_tokens: list[str] = []
 
     def compose(self) -> ComposeResult:
-        yield ResizeHandle()
+        yield SidebarDragHandle()
         with Widget(id="sidebar-body"):
             yield Label("Page ← [s] switch scope", id="scope-indicator")
             with VerticalScroll(id="chat-scroll"):
@@ -167,7 +164,7 @@ class AISidebar(Widget):
             yield Label("", id="status-line")
             yield Input(placeholder="Ask about this page...", id="ai-input")
 
-    def on_resize_handle_resized(self, event: ResizeHandle.Resized) -> None:
+    def on_sidebar_drag_handle_resized(self, event: SidebarDragHandle.Resized) -> None:
         screen_width = self.screen.size.width
         max_width = int(screen_width * MAX_WIDTH_RATIO)
         new_width = max(MIN_WIDTH, min(event.width, max_width))
