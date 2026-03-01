@@ -86,10 +86,13 @@ class PDFViewer(Widget):
         if self._engine:
             self._engine.close()
         self._engine = engine
-        self.current_page = 0
         self.query_one("#welcome-label").display = False
         self.query_one("#pdf-scroll").display = True
         self.query_one("#page-bar").display = True
+        indicator = self.query_one(PageIndicator)
+        indicator.total = engine.page_count
+        indicator.page = 0
+        self.current_page = 0
         self._render_page()
 
     def watch_current_page(self, value: int) -> None:
