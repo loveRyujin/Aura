@@ -24,19 +24,6 @@ class ContextScope(Enum):
     FULL_BOOK = "full_book"
 
 
-class QuickCommand(Enum):
-    SUMMARIZE = "summarize"
-    KEY_POINTS = "key_points"
-    TRANSLATE = "translate"
-
-
-COMMAND_PROMPTS = {
-    QuickCommand.SUMMARIZE: "Please summarize the following content concisely:\n\n{content}",
-    QuickCommand.KEY_POINTS: "Extract the key points from the following content as a bullet list:\n\n{content}",
-    QuickCommand.TRANSLATE: "Translate the following content to Chinese (if already Chinese, translate to English):\n\n{content}",
-}
-
-
 @dataclass
 class ChatMessage:
     role: str
@@ -51,12 +38,7 @@ class AIService:
         self._history: list[ChatMessage] = []
         self._book_context: str = ""
 
-    @property
-    def history(self) -> list[ChatMessage]:
-        return self._history
-
     def set_book_context(self, text: str) -> None:
-        """Cache the full book text for whole-book queries."""
         self._book_context = text
 
     @property
@@ -106,18 +88,6 @@ class AIService:
             ChatMessage(role="assistant", content="".join(full_response))
         )
 
-    async def quick_command(
-        self,
-        command: QuickCommand,
-        page_content: str,
-        scope: ContextScope = ContextScope.CURRENT_PAGE,
-    ) -> AsyncIterator[str]:
-        """Execute a predefined quick command."""
-        context = self._resolve_context(page_content, scope)
-        prompt = COMMAND_PROMPTS[command].format(content=context)
-        async for token in self.stream_response(prompt, page_context=""):
-            yield token
-
     def _resolve_context(self, page_context: str, scope: ContextScope) -> str:
         if scope == ContextScope.FULL_BOOK and self._book_context:
             return self._book_context
@@ -129,7 +99,6 @@ class AIService:
         messages = [ChatMessage(role="system", content=SYSTEM_PROMPT)]
 
         if context:
-            # Truncate to avoid exceeding model context window
             truncated = context[:32000] if len(context) > 32000 else context
             label = "Document content" if len(context) > 5000 else "Current page content"
             messages.append(ChatMessage(
