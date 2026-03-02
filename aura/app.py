@@ -86,6 +86,7 @@ class AuraApp(App):
         ("a", "toggle_ai", "AI"),
         ("s", "toggle_scope", "Scope"),
         ("v", "toggle_view", "View"),
+        ("c", "toggle_scroll", "Scroll"),
         ("slash", "search", "Search"),
         ("g", "go_to_page", "Go to"),
         ("right,l", "next_page", "Next"),
@@ -236,6 +237,9 @@ class AuraApp(App):
 
     def action_toggle_view(self) -> None:
         self.query_one(PDFViewer).toggle_view_mode()
+
+    def action_toggle_scroll(self) -> None:
+        self.query_one(PDFViewer).toggle_scroll_mode()
 
     def action_next_page(self) -> None:
         self.query_one(PDFViewer).next_page()
