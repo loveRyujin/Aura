@@ -1,18 +1,18 @@
 # Aura - TUI PDF Reader with AI Assistant
 
-A modern terminal-based PDF reader built with [Textual](https://textual.textualize.io/), featuring an integrated AI assistant for summarizing, extracting key points, and translating content.
+A modern terminal-based PDF reader built with [Textual](https://textual.textualize.io/), featuring an integrated AI assistant for analyzing and summarizing book content.
 
 ## Features
 
-- **PDF Rendering** - Pages rendered as Markdown with headings, tables, and lists preserved
-- **Page Navigation** - Arrow keys, `h`/`l`, or jump to specific page with `g`
-- **Table of Contents** - Collapsible TOC panel extracted from PDF outline
+- **PDF Rendering** - Text mode (Markdown) and image mode (Sixel / Kitty TGP / Halfcell)
+- **Two Scroll Modes** - Paginated (classic single-page) and continuous scrolling, toggle with `c`
+- **Smooth Navigation** - Debounced page flipping with adjacent-page prefetch for zero-lag reading
+- **Table of Contents** - Collapsible, resizable TOC panel extracted from PDF outline
 - **Full-Text Search** - Search across all pages with `/`
-- **AI Assistant** - Sidebar with quick commands and free-form chat
-  - **Summarize** - AI-powered page summarization
-  - **Key Points** - Extract bullet-point highlights
-  - **Translate** - Translate between Chinese and English
+- **AI Assistant** - Keyboard-driven chat sidebar supporting page-level and whole-book analysis
+- **Multi-LLM Support** - OpenAI, Anthropic, Ollama, and 100+ providers via LiteLLM
 - **File Browser** - Open any PDF with the built-in file dialog
+- **Standalone Build** - Package as a single executable with PyInstaller
 
 ## Requirements
 
@@ -69,16 +69,37 @@ python build.py
 
 ## Keybindings
 
-| Key       | Action              |
-|-----------|---------------------|
-| `o`       | Open PDF file       |
-| `t`       | Toggle TOC panel    |
-| `a`       | Toggle AI sidebar   |
-| `/`       | Search in PDF       |
-| `g`       | Go to page          |
-| `←` / `h` | Previous page      |
-| `→` / `l` | Next page          |
-| `q`       | Quit                |
+| Key        | Action                             |
+|------------|------------------------------------|
+| `o`        | Open PDF file                      |
+| `t`        | Toggle TOC panel                   |
+| `a`        | Toggle AI sidebar                  |
+| `s`        | Toggle AI scope (page / book)      |
+| `v`        | Toggle view mode (text / image)    |
+| `c`        | Toggle scroll mode (page / scroll) |
+| `/`        | Search in PDF                      |
+| `g`        | Go to page                         |
+| `←` / `h`  | Previous page                      |
+| `→` / `l`  | Next page                          |
+| `q`        | Quit                               |
+
+## Image Rendering
+
+Aura supports terminal graphics protocols for higher-quality PDF rendering in image mode (`v`):
+
+| Protocol  | Terminals                                |
+|-----------|------------------------------------------|
+| Kitty TGP | Kitty                                    |
+| Sixel     | WezTerm, Windows Terminal 1.22+, iTerm2  |
+| Halfcell  | Any terminal (fallback)                  |
+
+The renderer is auto-detected. To force a specific one, set the `AURA_RENDERER` environment variable:
+
+```bash
+AURA_RENDERER=sixel aura book.pdf
+AURA_RENDERER=tgp aura book.pdf
+AURA_RENDERER=halfcell aura book.pdf
+```
 
 ## AI Configuration
 
@@ -119,6 +140,7 @@ Aura uses [LiteLLM](https://docs.litellm.ai/) under the hood, supporting 100+ LL
 - **[Textual](https://textual.textualize.io/)** - Modern Python TUI framework
 - **[PyMuPDF](https://pymupdf.readthedocs.io/)** - High-performance PDF parsing
 - **[PyMuPDF4LLM](https://pymupdf.readthedocs.io/en/latest/pymupdf4llm/)** - PDF to Markdown conversion
+- **[textual-image](https://github.com/lnqs/textual-image)** - Terminal graphics protocol support (Sixel / Kitty TGP / Halfcell)
 - **[LiteLLM](https://docs.litellm.ai/)** - Unified LLM API gateway
 
 ## License
