@@ -155,6 +155,7 @@ class PDFViewer(Widget):
         super().__init__()
         self._engine: PDFEngine | None = None
         self._loaded_pages: set[int] = set()
+        self._render_seq: int = 0
 
     def compose(self) -> ComposeResult:
         yield Label("Press [b]o[/b] to open a PDF file", id="welcome-label")
@@ -251,6 +252,7 @@ class PDFViewer(Widget):
             self._load_dynamic_pages(self.current_page, end)
 
         self.query_one("#pdf-scroll").scroll_home(animate=False)
+        self._prefetch_adjacent()
 
     # ── Paginated helpers ────────────────────────────────────────
 
@@ -277,28 +279,32 @@ class PDFViewer(Widget):
         self._loaded_pages.clear()
 
     def _load_dynamic_pages(self, start: int, end: int) -> None:
-        """Mount Markdown widgets for pages [start, end)."""
+        """Mount Markdown widgets for pages [start, end) in one batch."""
         if not self._engine:
             return
         scroll = self.query_one("#pdf-scroll")
         img_widget = self.query_one("#pdf-image", TIImage)
 
+        batch: list[Widget] = []
         for p in range(start, end):
             if p in self._loaded_pages:
                 continue
             self._loaded_pages.add(p)
-
-            sep = Static(
-                f"── Page {p + 1} / {self._engine.page_count} ──",
-                id=f"sep-{p}",
-                classes="page-sep",
+            batch.append(
+                Static(
+                    f"── Page {p + 1} / {self._engine.page_count} ──",
+                    id=f"sep-{p}",
+                    classes="page-sep",
+                )
             )
-            md = Markdown(
-                self._engine.get_page_markdown(p),
-                id=f"page-{p}",
+            batch.append(
+                Markdown(
+                    self._engine.get_page_markdown(p),
+                    id=f"page-{p}",
+                )
             )
-            scroll.mount(sep, before=img_widget)
-            scroll.mount(md, before=img_widget)
+        if batch:
+            scroll.mount_all(batch, before=img_widget)
 
     # ── Scroll-driven page loading (CONTINUOUS only) ─────────────
 
@@ -373,6 +379,50 @@ class PDFViewer(Widget):
         img_widget.image = pil_img
         self.query_one("#pdf-scroll").scroll_home(animate=False)
 
+    # ── Debounced rendering ──────────────────────────────────────
+
+    def _schedule_render(self) -> None:
+        """Debounce: coalesce rapid page flips into a single render."""
+        self._render_seq += 1
+        seq = self._render_seq
+        self.set_timer(0.04, lambda: self._do_deferred_render(seq))
+
+    def _do_deferred_render(self, seq: int) -> None:
+        if seq != self._render_seq:
+            return
+        if not self._engine:
+            return
+
+        if self.view_mode == ViewMode.IMAGE:
+            self.app.run_worker(self._render_image_async(), exclusive=True)
+            self.query_one("#pdf-scroll").scroll_home(animate=False)
+        elif self.scroll_mode == ScrollMode.PAGINATED:
+            self._show_single_page()
+        else:
+            self._scroll_to_loaded_page(self.current_page)
+
+        self._prefetch_adjacent()
+
+    # ── Cooperative prefetch ─────────────────────────────────────
+
+    def _prefetch_adjacent(self) -> None:
+        """Schedule background cache warm-up for nearby pages."""
+        if not self._engine:
+            return
+        page = self.current_page
+        for offset in (1, -1, 2, -2, 3, -3):
+            p = page + offset
+            if 0 <= p < self._engine.page_count and not self._engine.is_page_cached(p):
+                self.set_timer(0.05, lambda pp=p: self._prefetch_one(pp))
+                return
+
+    def _prefetch_one(self, page_num: int) -> None:
+        """Prefetch a single page, then chain to next."""
+        if not self._engine or self._engine.is_page_cached(page_num):
+            return
+        self._engine.get_page_markdown(page_num)
+        self._prefetch_adjacent()
+
     # ── Navigation ───────────────────────────────────────────────
 
     def next_page(self) -> None:
@@ -381,16 +431,8 @@ class PDFViewer(Widget):
         target = self.current_page + 1
         if target >= self._engine.page_count:
             return
-
         self.current_page = target
-
-        if self.view_mode == ViewMode.IMAGE:
-            self.app.run_worker(self._render_image_async(), exclusive=True)
-            self.query_one("#pdf-scroll").scroll_home(animate=False)
-        elif self.scroll_mode == ScrollMode.PAGINATED:
-            self._show_single_page()
-        else:
-            self._scroll_to_loaded_page(target)
+        self._schedule_render()
 
     def prev_page(self) -> None:
         if not self._engine:
@@ -398,30 +440,14 @@ class PDFViewer(Widget):
         target = self.current_page - 1
         if target < 0:
             return
-
         self.current_page = target
-
-        if self.view_mode == ViewMode.IMAGE:
-            self.app.run_worker(self._render_image_async(), exclusive=True)
-            self.query_one("#pdf-scroll").scroll_home(animate=False)
-        elif self.scroll_mode == ScrollMode.PAGINATED:
-            self._show_single_page()
-        else:
-            self._scroll_to_loaded_page(target)
+        self._schedule_render()
 
     def go_to_page(self, page: int) -> None:
         if not self._engine or not (0 <= page < self._engine.page_count):
             return
-
         self.current_page = page
-
-        if self.view_mode == ViewMode.IMAGE:
-            self.app.run_worker(self._render_image_async(), exclusive=True)
-            self.query_one("#pdf-scroll").scroll_home(animate=False)
-        elif self.scroll_mode == ScrollMode.PAGINATED:
-            self._show_single_page()
-        else:
-            self._scroll_to_loaded_page(page)
+        self._schedule_render()
 
     def _scroll_to_loaded_page(self, page: int) -> None:
         """Ensure *page* is loaded and scroll to its separator."""

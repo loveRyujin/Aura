@@ -32,6 +32,9 @@ class PDFEngine:
     def page_count(self) -> int:
         return len(self._doc)
 
+    def is_page_cached(self, page_num: int) -> bool:
+        return page_num in self._cache
+
     def get_page_markdown(self, page_num: int) -> str:
         """Return Markdown text for a single page (0-indexed)."""
         if page_num in self._cache:
