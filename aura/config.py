@@ -19,6 +19,11 @@ PROVIDER_DEFAULTS: dict[str, dict[str, str]] = {
     "anthropic": {"api_base": "", "model": "claude-3-haiku-20240307"},
 }
 
+EMBEDDING_PROVIDER_DEFAULTS: dict[str, dict[str, str]] = {
+    "ollama": {"api_base": "http://localhost:11434", "model": "nomic-embed-text"},
+    "openai": {"api_base": "", "model": "text-embedding-3-small"},
+}
+
 
 @dataclass
 class AIConfig:
@@ -47,8 +52,33 @@ class AIConfig:
 
 
 @dataclass
+class EmbeddingConfig:
+    provider: str = "openai"
+    model: str = "text-embedding-3-small"
+    api_key: str = ""
+    api_base: str = ""
+    dimension: int = 512
+    chunk_size: int = 1024
+    chunk_overlap: int = 128
+    top_k: int = 5
+
+    @property
+    def resolved_model(self) -> str:
+        if self.provider == "ollama" and not self.model.startswith("ollama/"):
+            return f"ollama/{self.model}"
+        return self.model
+
+    @property
+    def resolved_api_base(self) -> str:
+        if self.api_base:
+            return self.api_base
+        return EMBEDDING_PROVIDER_DEFAULTS.get(self.provider, {}).get("api_base", "")
+
+
+@dataclass
 class AppConfig:
     ai: AIConfig = field(default_factory=AIConfig)
+    embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
 
     @classmethod
     def load(cls, path: Path | None = None) -> AppConfig:
@@ -77,4 +107,21 @@ class AppConfig:
             temperature=ai_data.get("temperature", AIConfig.temperature),
             max_tokens=ai_data.get("max_tokens", AIConfig.max_tokens),
         )
-        return cls(ai=ai)
+
+        emb_data = data.get("embedding", {})
+        emb_provider = emb_data.get("provider", EmbeddingConfig.provider)
+        emb_defaults = EMBEDDING_PROVIDER_DEFAULTS.get(emb_provider, {})
+        embedding = EmbeddingConfig(
+            provider=emb_provider,
+            model=emb_data.get(
+                "model", emb_defaults.get("model", EmbeddingConfig.model)
+            ),
+            api_key=emb_data.get("api_key", EmbeddingConfig.api_key),
+            api_base=emb_data.get("api_base", EmbeddingConfig.api_base),
+            dimension=emb_data.get("dimension", EmbeddingConfig.dimension),
+            chunk_size=emb_data.get("chunk_size", EmbeddingConfig.chunk_size),
+            chunk_overlap=emb_data.get("chunk_overlap", EmbeddingConfig.chunk_overlap),
+            top_k=emb_data.get("top_k", EmbeddingConfig.top_k),
+        )
+
+        return cls(ai=ai, embedding=embedding)

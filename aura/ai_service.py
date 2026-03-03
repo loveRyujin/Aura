@@ -169,10 +169,11 @@ class AIService:
         user_input: str,
         page_context: str = "",
         scope: ContextScope = ContextScope.CURRENT_PAGE,
+        rag_context: str = "",
     ) -> AsyncIterator[str]:
         """Stream an AI response token by token."""
         context = self._resolve_context(page_context, scope)
-        messages = self._build_messages(user_input, context)
+        messages = self._build_messages(user_input, context, rag_context)
 
         if self._session:
             self._session.messages.append(
@@ -264,7 +265,7 @@ class AIService:
         return _SYSTEM_TEMPLATE.format(metadata=metadata_block)
 
     def _build_messages(
-        self, user_input: str, context: str
+        self, user_input: str, context: str, rag_context: str = ""
     ) -> list[ChatMessage]:
         messages: list[ChatMessage] = [
             ChatMessage(role="system", content=self._build_system_prompt())
@@ -280,21 +281,24 @@ class AIService:
         recent = self.history[-keep:] if self.history else []
         messages.extend(recent)
 
+        m = self._metadata
         if context:
-            truncated = context[:32000]
-            m = self._metadata
+            truncated = context[:16000]
             header = ""
             if m.current_section:
                 header = (
                     f"Current location: {m.current_section} "
                     f"(p.{m.current_page + 1}/{m.page_count})\n\n"
                 )
-            label = (
-                "Document content" if len(context) > 5000 else "Current page content"
-            )
             messages.append(ChatMessage(
                 role="system",
-                content=f"{label}:\n{header}{truncated}",
+                content=f"Current page content:\n{header}{truncated}",
+            ))
+
+        if rag_context:
+            messages.append(ChatMessage(
+                role="system",
+                content=f"Related content from document:\n{rag_context}",
             ))
 
         messages.append(ChatMessage(role="user", content=user_input))

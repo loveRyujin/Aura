@@ -44,3 +44,38 @@ max_tokens = 2048
 # api_base = "https://your-proxy.example.com/v1"
 # temperature = 0.7
 # max_tokens = 2048
+
+# ─── RAG Embedding Configuration ───────────────────────
+# [embedding]
+# Provider: "openai" | "ollama"
+# provider = "openai"
+
+# Embedding model
+# model = "text-embedding-3-small"
+
+# API key (not needed for Ollama)
+# api_key = ""
+
+# Custom API base URL (Ollama defaults to http://localhost:11434)
+# api_base = ""
+
+# Embedding vector dimension
+# dimension = 512
+
+# Chunk size (characters) for document splitting
+# chunk_size = 1024
+
+# Overlap between adjacent chunks (characters)
+# chunk_overlap = 128
+
+# Number of top-k chunks to retrieve per query
+# top_k = 5
+
+# ─── Example: Ollama embedding (local) ─────────────────
+[embedding]
+provider = "ollama"
+model = "nomic-embed-text"
+dimension = 768
+chunk_size = 1024
+chunk_overlap = 128
+top_k = 5

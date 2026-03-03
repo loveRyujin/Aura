@@ -11,6 +11,8 @@ dependencies = [
     "pymupdf4llm>=0.0.17",
     "pymupdf-layout>=1.27.0",
     "litellm>=1.40.0",
+    "sqlite-vec>=0.1.6",
+    "numpy>=1.26.0",
 ]
 
 [project.optional-dependencies]

@@ -13,6 +13,7 @@ from textual.worker import Worker
 from aura.ai_service import AIService
 from aura.config import AppConfig
 from aura.pdf_engine import PDFEngine
+from aura.rag import RAGService
 from aura.session import SessionManager
 from aura.widgets.ai_sidebar import AISidebar
 from aura.widgets.file_dialog import FileDialog
@@ -100,6 +101,7 @@ class AuraApp(App):
         self.file_path = file_path
         self.config = config or AppConfig.load()
         self._ai_service = AIService(self.config.ai)
+        self._rag_service = RAGService(self.config.embedding)
         self._session_mgr = SessionManager()
         self._ai_worker: Worker | None = None
 
@@ -144,6 +146,12 @@ class AuraApp(App):
 
         self.sub_title = f"{engine.filename}  p.1/{engine.page_count}"
 
+        if not self._rag_service.has_index(str(path)):
+            self.notify("Building RAG index...", severity="information")
+            self.run_worker(
+                self._build_rag_index(engine, str(path)), exclusive=False
+            )
+
     def _get_page_context(self) -> str:
         return self.query_one(PDFViewer).get_current_text()
 
@@ -174,6 +182,20 @@ class AuraApp(App):
 
     def on_tocpanel_entry_selected(self, event: TOCPanel.EntrySelected) -> None:
         self.query_one(PDFViewer).go_to_page(event.page)
+
+    # ── RAG indexing ────────────────────────────────────────────
+
+    async def _build_rag_index(self, engine: PDFEngine, book_path: str) -> None:
+        def _on_progress(done: int, total: int) -> None:
+            self.notify(
+                f"Indexing: {done}/{total} chunks", severity="information"
+            )
+
+        count = await self._rag_service.build_index(
+            engine, book_path, on_progress=_on_progress
+        )
+        if count:
+            self.notify(f"RAG index ready ({count} chunks).", severity="information")
 
     # ── AI events ────────────────────────────────────────────────
 
@@ -206,13 +228,26 @@ class AuraApp(App):
         self._update_ai_location()
         sidebar = self.query_one(AISidebar)
         sidebar.append_user_message(event.text)
-        page_context = self._get_page_context()
-        stream = self._ai_service.stream_response(
-            event.text, page_context, event.scope
-        )
         self._ai_worker = self.run_worker(
-            self._consume_stream(stream), exclusive=True
+            self._run_ai_query(event.text, event.scope), exclusive=True
         )
+
+    async def _run_ai_query(self, text: str, scope) -> None:
+        """Retrieve RAG context, then stream the AI response."""
+        page_context = self._get_page_context()
+
+        rag_context = ""
+        viewer = self.query_one(PDFViewer)
+        if viewer.engine:
+            book_path = str(viewer.engine._path)
+            if self._rag_service.has_index(book_path):
+                chunks = await self._rag_service.retrieve(text, book_path)
+                rag_context = RAGService.format_context(chunks)
+
+        stream = self._ai_service.stream_response(
+            text, page_context, scope, rag_context=rag_context
+        )
+        await self._consume_stream(stream)
 
     async def _consume_stream(self, stream) -> None:
         sidebar = self.query_one(AISidebar)
