@@ -91,8 +91,8 @@ class AuraApp(App):
         ("c", "toggle_scroll", "Scroll"),
         ("slash", "search", "Search"),
         ("g", "go_to_page", "Go to"),
-        ("right,l", "next_page", "Next"),
-        ("left,h", "prev_page", "Prev"),
+        ("right,n", "next_page", "Next"),
+        ("left,b", "prev_page", "Prev"),
     ]
 
     def __init__(self, file_path: Path | None = None, config: AppConfig | None = None):
