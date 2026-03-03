@@ -52,6 +52,27 @@ class PDFEngine:
             for level, title, page in raw_toc
         ]
 
+    def get_toc_outline(self, max_depth: int = 2) -> str:
+        """Return a compact text outline of the TOC (for system prompt)."""
+        entries = self.get_toc()
+        lines: list[str] = []
+        for e in entries:
+            if e.level <= max_depth:
+                indent = "  " * (e.level - 1)
+                lines.append(f"{indent}- {e.title} (p.{e.page + 1})")
+        return "\n".join(lines) if lines else "(no table of contents)"
+
+    def get_section_for_page(self, page_num: int) -> str:
+        """Return the chapter/section title that contains *page_num*."""
+        entries = self.get_toc()
+        current_section = ""
+        for e in entries:
+            if e.page <= page_num:
+                current_section = e.title
+            else:
+                break
+        return current_section
+
     def get_page_text(self, page_num: int) -> str:
         """Return plain text for a page (for AI context, fallback)."""
         return self._doc[page_num].get_text()

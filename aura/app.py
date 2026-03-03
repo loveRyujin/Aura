@@ -8,10 +8,12 @@ from textual.app import App, ComposeResult
 from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Footer, Header, Input as TextInput, Label
+from textual.worker import Worker
 
 from aura.ai_service import AIService
 from aura.config import AppConfig
 from aura.pdf_engine import PDFEngine
+from aura.session import SessionManager
 from aura.widgets.ai_sidebar import AISidebar
 from aura.widgets.file_dialog import FileDialog
 from aura.widgets.pdf_viewer import PDFViewer
@@ -98,6 +100,8 @@ class AuraApp(App):
         self.file_path = file_path
         self.config = config or AppConfig.load()
         self._ai_service = AIService(self.config.ai)
+        self._session_mgr = SessionManager()
+        self._ai_worker: Worker | None = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -113,6 +117,8 @@ class AuraApp(App):
         if self.file_path and self.file_path.exists():
             self._open_pdf(self.file_path)
 
+    # ── PDF lifecycle ────────────────────────────────────────────
+
     def _open_pdf(self, path: Path) -> None:
         engine = PDFEngine(path)
         viewer = self.query_one(PDFViewer)
@@ -123,12 +129,32 @@ class AuraApp(App):
         toc_panel.load_toc(toc_entries)
 
         self._ai_service.clear_all()
+        self._ai_service.set_pdf_metadata(
+            filename=engine.filename,
+            page_count=engine.page_count,
+            toc_outline=engine.get_toc_outline(),
+        )
+
+        session = self._session_mgr.get_or_create_for_book(str(path))
+        self._ai_service.bind_session(session)
+
+        sidebar = self.query_one(AISidebar)
+        sidebar.update_session_bar(session)
+        sidebar.rebuild_chat(session)
+
         self.sub_title = f"{engine.filename}  p.1/{engine.page_count}"
 
     def _get_page_context(self) -> str:
         return self.query_one(PDFViewer).get_current_text()
 
-    # -- Event handlers --
+    def _update_ai_location(self) -> None:
+        viewer = self.query_one(PDFViewer)
+        if viewer.engine:
+            page = viewer.current_page
+            section = viewer.engine.get_section_for_page(page)
+            self._ai_service.update_location(page, section)
+
+    # ── Page change ──────────────────────────────────────────────
 
     def on_pdfviewer_page_changed(self, event: PDFViewer.PageChanged) -> None:
         viewer = self.query_one(PDFViewer)
@@ -137,9 +163,19 @@ class AuraApp(App):
                 f"{viewer.engine.filename}  "
                 f"p.{event.page + 1}/{event.total}"
             )
+            self._update_ai_location()
+            sidebar = self.query_one(AISidebar)
+            session = self._session_mgr.active_session
+            sidebar.update_context_info(
+                page=event.page,
+                section=viewer.engine.get_section_for_page(event.page),
+                compressed=bool(session and session.compressed_summary),
+            )
 
     def on_tocpanel_entry_selected(self, event: TOCPanel.EntrySelected) -> None:
         self.query_one(PDFViewer).go_to_page(event.page)
+
+    # ── AI events ────────────────────────────────────────────────
 
     def on_aisidebar_book_context_requested(
         self, event: AISidebar.BookContextRequested
@@ -159,16 +195,24 @@ class AuraApp(App):
     def on_aisidebar_chat_message_sent(
         self, event: AISidebar.ChatMessageSent
     ) -> None:
+        if event.text == "__clear__":
+            session = self._session_mgr.active_session
+            if session:
+                session.messages.clear()
+                session.compressed_summary = ""
+                self._session_mgr.save_session(session)
+            return
+
+        self._update_ai_location()
         sidebar = self.query_one(AISidebar)
         sidebar.append_user_message(event.text)
         page_context = self._get_page_context()
-        self._run_ai_stream(
-            self._ai_service.stream_response(event.text, page_context, event.scope)
+        stream = self._ai_service.stream_response(
+            event.text, page_context, event.scope
         )
-
-    def _run_ai_stream(self, stream) -> None:
-        """Launch async task to consume an AI token stream."""
-        self.run_worker(self._consume_stream(stream), exclusive=True)
+        self._ai_worker = self.run_worker(
+            self._consume_stream(stream), exclusive=True
+        )
 
     async def _consume_stream(self, stream) -> None:
         sidebar = self.query_one(AISidebar)
@@ -181,7 +225,62 @@ class AuraApp(App):
         else:
             sidebar.end_ai_response()
 
-    # -- Actions --
+        session = self._session_mgr.active_session
+        if session:
+            self._session_mgr.save_session(session)
+
+        self.run_worker(self._ai_service.maybe_compress(), exclusive=False)
+
+    # ── Cancel ───────────────────────────────────────────────────
+
+    def on_aisidebar_cancel_requested(
+        self, event: AISidebar.CancelRequested
+    ) -> None:
+        if self._ai_worker and self._ai_worker.is_running:
+            self._ai_worker.cancel()
+            sidebar = self.query_one(AISidebar)
+            sidebar.end_ai_response_cancelled()
+
+    # ── Session management ───────────────────────────────────────
+
+    def on_aisidebar_new_session_requested(
+        self, event: AISidebar.NewSessionRequested
+    ) -> None:
+        viewer = self.query_one(PDFViewer)
+        book_path = str(viewer.engine._path) if viewer.engine else ""
+        self._session_mgr.save_session()
+        session = self._session_mgr.create_session(book_path)
+        self._session_mgr.set_active(session)
+        self._ai_service.bind_session(session)
+
+        sidebar = self.query_one(AISidebar)
+        sidebar.update_session_bar(session)
+        sidebar.rebuild_chat(session)
+        self._refresh_session_list()
+
+    def on_aisidebar_session_switched(
+        self, event: AISidebar.SessionSwitched
+    ) -> None:
+        self._session_mgr.save_session()
+        session = self._session_mgr.get_session(event.session_id)
+        if not session:
+            return
+        self._session_mgr.set_active(session)
+        self._ai_service.bind_session(session)
+
+        sidebar = self.query_one(AISidebar)
+        sidebar.update_session_bar(session)
+        sidebar.rebuild_chat(session)
+
+    def _refresh_session_list(self) -> None:
+        viewer = self.query_one(PDFViewer)
+        book_path = str(viewer.engine._path) if viewer.engine else None
+        sessions = self._session_mgr.list_sessions(book_path)
+        active = self._session_mgr.active_session
+        active_id = active.id if active else ""
+        self.query_one(AISidebar).refresh_session_list(sessions, active_id)
+
+    # ── Actions ──────────────────────────────────────────────────
 
     def action_search(self) -> None:
         viewer = self.query_one(PDFViewer)
@@ -231,6 +330,8 @@ class AuraApp(App):
 
     def action_toggle_ai(self) -> None:
         self.query_one(AISidebar).toggle()
+        if not self.query_one(AISidebar).has_class("hidden"):
+            self._refresh_session_list()
 
     def action_toggle_scope(self) -> None:
         self.query_one(AISidebar).toggle_scope()
