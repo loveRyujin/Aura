@@ -104,6 +104,7 @@ class AuraApp(App):
         self._rag_service = RAGService(self.config.embedding)
         self._session_mgr = SessionManager()
         self._ai_worker: Worker | None = None
+        self._rag_indexing = False
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -146,8 +147,11 @@ class AuraApp(App):
 
         self.sub_title = f"{engine.filename}  p.1/{engine.page_count}"
 
-        if not self._rag_service.has_index(str(path)):
-            self.notify("Building RAG index...", severity="information")
+        if self._rag_service.has_index(str(path)):
+            sidebar.update_rag_status("Index ready", ready=True)
+        else:
+            self._rag_indexing = True
+            sidebar.update_rag_status("Building index...")
             self.run_worker(
                 self._build_rag_index(engine, str(path)), exclusive=False
             )
@@ -186,16 +190,25 @@ class AuraApp(App):
     # ── RAG indexing ────────────────────────────────────────────
 
     async def _build_rag_index(self, engine: PDFEngine, book_path: str) -> None:
-        def _on_progress(done: int, total: int) -> None:
-            self.notify(
-                f"Indexing: {done}/{total} chunks", severity="information"
-            )
+        sidebar = self.query_one(AISidebar)
 
-        count = await self._rag_service.build_index(
-            engine, book_path, on_progress=_on_progress
-        )
-        if count:
-            self.notify(f"RAG index ready ({count} chunks).", severity="information")
+        def _on_progress(done: int, total: int) -> None:
+            sidebar.update_rag_status(f"Indexing: {done}/{total} chunks...")
+
+        try:
+            count = await self._rag_service.build_index(
+                engine, book_path, on_progress=_on_progress
+            )
+            if count:
+                sidebar.update_rag_status(
+                    f"Index ready ({count} chunks)", ready=True
+                )
+            else:
+                sidebar.update_rag_status("Index ready", ready=True)
+        except Exception as exc:
+            sidebar.update_rag_status(f"Index failed: {exc!s:.40}")
+        finally:
+            self._rag_indexing = False
 
     # ── AI events ────────────────────────────────────────────────
 
@@ -240,7 +253,10 @@ class AuraApp(App):
         viewer = self.query_one(PDFViewer)
         if viewer.engine:
             book_path = str(viewer.engine._path)
-            if self._rag_service.has_index(book_path):
+            if self._rag_indexing:
+                sidebar = self.query_one(AISidebar)
+                sidebar.show_rag_pending_hint()
+            elif self._rag_service.has_index(book_path):
                 chunks = await self._rag_service.retrieve(text, book_path)
                 rag_context = RAGService.format_context(chunks)
 

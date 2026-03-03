@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -62,7 +63,8 @@ class RAGService:
         if store.is_indexed():
             return 0
 
-        chunks = chunk_document(
+        chunks = await asyncio.to_thread(
+            chunk_document,
             engine,
             chunk_size=self._config.chunk_size,
             chunk_overlap=self._config.chunk_overlap,
@@ -81,7 +83,7 @@ class RAGService:
             if on_progress:
                 on_progress(min(start + _EMBED_BATCH, total), total)
 
-        store.add_chunks(chunks, all_embeddings)
+        await asyncio.to_thread(store.add_chunks, chunks, all_embeddings)
         return total
 
     async def retrieve(

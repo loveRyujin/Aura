@@ -109,7 +109,7 @@ class AppConfig:
         )
 
         emb_data = data.get("embedding", {})
-        emb_provider = emb_data.get("provider", EmbeddingConfig.provider)
+        emb_provider = emb_data.get("provider", provider)
         emb_defaults = EMBEDDING_PROVIDER_DEFAULTS.get(emb_provider, {})
         embedding = EmbeddingConfig(
             provider=emb_provider,

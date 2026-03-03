@@ -259,6 +259,14 @@ class AISidebar(Widget):
         color: $text-muted;
         background: $surface;
     }
+    AISidebar #rag-status {
+        height: 1;
+        padding: 0 2;
+        color: $warning;
+    }
+    AISidebar #rag-status.ready {
+        color: $success;
+    }
     AISidebar #status-line {
         height: 1;
         padding: 0 2;
@@ -315,6 +323,7 @@ class AISidebar(Widget):
                 for prompt_text in _QUICK_PROMPTS:
                     yield QuickPrompt(prompt_text)
             yield Label("", id="slash-hint")
+            yield Label("", id="rag-status")
             yield Label("", id="status-line")
             yield Input(placeholder="Ask about this page... (/ for commands)", id="ai-input")
 
@@ -570,6 +579,27 @@ class AISidebar(Widget):
             self.query_one("#ai-input", Input).focus()
         except Exception:
             pass
+
+    # ── RAG status ────────────────────────────────────────────────
+
+    def update_rag_status(self, text: str, ready: bool = False) -> None:
+        label = self.query_one("#rag-status", Label)
+        label.update(text)
+        if ready:
+            label.add_class("ready")
+        else:
+            label.remove_class("ready")
+
+    def show_rag_pending_hint(self) -> None:
+        scroll = self.query_one("#chat-scroll", VerticalScroll)
+        hint = ChatBubble(classes="ai-msg")
+        hint.update(
+            "[dim]RAG index is still building. "
+            "Your question will be answered with the current page context only. "
+            "Full-book retrieval will be available once indexing completes.[/]"
+        )
+        scroll.mount(hint)
+        scroll.scroll_end(animate=False)
 
     # ── Context indicator ────────────────────────────────────────
 
