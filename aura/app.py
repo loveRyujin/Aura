@@ -261,7 +261,8 @@ class AuraApp(App):
 
     async def _consume_stream(self, stream) -> None:
         sidebar = self.query_one(AISidebar)
-        sidebar.begin_ai_response()
+        model_name = self._ai_service._config.resolved_model
+        sidebar.begin_ai_response(model_name)
         try:
             async for token in stream:
                 sidebar.append_ai_token(token)

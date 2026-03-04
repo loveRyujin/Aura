@@ -310,6 +310,7 @@ class AISidebar(Widget):
         self._current_bubble: ChatBubble | None = None
         self._ai_tokens: list[str] = []
         self._session_list_open = False
+        self._model_name = "AI"
 
     def compose(self) -> ComposeResult:
         yield SidebarDragHandle()
@@ -445,13 +446,14 @@ class AISidebar(Widget):
         scroll.mount(bubble)
         scroll.scroll_end(animate=False)
 
-    def begin_ai_response(self) -> None:
+    def begin_ai_response(self, model_name: str = "AI") -> None:
         self._streaming = True
+        self._model_name = model_name
         self._hide_empty_and_prompts()
         self._ai_tokens.clear()
         scroll = self.query_one("#chat-scroll", VerticalScroll)
         bubble = ChatBubble(classes="ai-msg")
-        bubble.update("[bold green]AI[/]\n▍")
+        bubble.update(f"[bold green]{model_name}[/]\n▍")
         scroll.mount(bubble)
         self._current_bubble = bubble
         scroll.scroll_end(animate=False)
@@ -463,7 +465,7 @@ class AISidebar(Widget):
         self._ai_tokens.append(token)
         if self._current_bubble:
             text = "".join(self._ai_tokens)
-            self._current_bubble.update(f"[bold green]AI[/]\n{text}▍")
+            self._current_bubble.update(f"[bold green]{self._model_name}[/]\n{text}▍")
             self.query_one("#chat-scroll", VerticalScroll).scroll_end(
                 animate=False
             )
@@ -487,7 +489,7 @@ class AISidebar(Widget):
         text = "".join(self._ai_tokens)
         if self._current_bubble:
             self._current_bubble.update(
-                f"[bold green]AI[/]\n{text}\n[dim italic]\\[Cancelled][/]"
+                f"[bold green]{self._model_name}[/]\n{text}\n[dim italic]\\[Cancelled][/]"
             )
         self._current_bubble = None
         self._ai_tokens.clear()
