@@ -49,6 +49,10 @@ class RAGService:
     def has_index(self, book_path: str) -> bool:
         return self._get_store(book_path).is_indexed()
 
+    async def has_index_async(self, book_path: str) -> bool:
+        """Thread-safe async version of has_index."""
+        return await asyncio.to_thread(self.has_index, book_path)
+
     async def build_index(
         self,
         engine: PDFEngine,
@@ -60,7 +64,7 @@ class RAGService:
         Returns the total number of chunks indexed.
         """
         store = self._get_store(book_path)
-        if store.is_indexed():
+        if await asyncio.to_thread(store.is_indexed):
             return 0
 
         chunks = await asyncio.to_thread(
@@ -94,12 +98,15 @@ class RAGService:
     ) -> list[RetrievedChunk]:
         """Embed the query and return the most relevant chunks."""
         store = self._get_store(book_path)
-        if not store.is_indexed():
+        is_indexed = await asyncio.to_thread(store.is_indexed)
+        if not is_indexed:
             return []
 
         k = top_k or self._config.top_k
         query_emb = await self._embedder.embed_query(query)
-        results: list[SearchResult] = store.search(query_emb, k)
+        results: list[SearchResult] = await asyncio.to_thread(
+            store.search, query_emb, k
+        )
         return [
             RetrievedChunk(
                 text=r.text,

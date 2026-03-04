@@ -87,7 +87,6 @@ class AuraApp(App):
         ("o", "open_file", "Open"),
         ("t", "toggle_toc", "TOC"),
         ("a", "toggle_ai", "AI"),
-        ("s", "toggle_scope", "Scope"),
         ("v", "toggle_view", "View"),
         ("c", "toggle_scroll", "Scroll"),
         ("slash", "search", "Search"),
@@ -155,9 +154,6 @@ class AuraApp(App):
             self.run_worker(
                 self._build_rag_index(engine, str(path)), exclusive=False
             )
-
-    def _get_page_context(self) -> str:
-        return self.query_one(PDFViewer).get_current_text()
 
     def _update_ai_location(self) -> None:
         viewer = self.query_one(PDFViewer)
@@ -242,13 +238,11 @@ class AuraApp(App):
         sidebar = self.query_one(AISidebar)
         sidebar.append_user_message(event.text)
         self._ai_worker = self.run_worker(
-            self._run_ai_query(event.text, event.scope), exclusive=True
+            self._run_ai_query(event.text), exclusive=True
         )
 
-    async def _run_ai_query(self, text: str, scope) -> None:
+    async def _run_ai_query(self, text: str) -> None:
         """Retrieve RAG context, then stream the AI response."""
-        page_context = self._get_page_context()
-
         rag_context = ""
         viewer = self.query_one(PDFViewer)
         if viewer.engine:
@@ -256,12 +250,12 @@ class AuraApp(App):
             if self._rag_indexing:
                 sidebar = self.query_one(AISidebar)
                 sidebar.show_rag_pending_hint()
-            elif self._rag_service.has_index(book_path):
+            elif await self._rag_service.has_index_async(book_path):
                 chunks = await self._rag_service.retrieve(text, book_path)
                 rag_context = RAGService.format_context(chunks)
 
         stream = self._ai_service.stream_response(
-            text, page_context, scope, rag_context=rag_context
+            text, rag_context=rag_context
         )
         await self._consume_stream(stream)
 
@@ -383,9 +377,6 @@ class AuraApp(App):
         self.query_one(AISidebar).toggle()
         if not self.query_one(AISidebar).has_class("hidden"):
             self._refresh_session_list()
-
-    def action_toggle_scope(self) -> None:
-        self.query_one(AISidebar).toggle_scope()
 
     def action_toggle_view(self) -> None:
         self.query_one(PDFViewer).toggle_view_mode()

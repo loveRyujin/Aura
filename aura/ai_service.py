@@ -93,7 +93,6 @@ def expand_slash_command(raw_input: str) -> str | None:
 # ── Context scope ────────────────────────────────────────────────
 
 class ContextScope(Enum):
-    CURRENT_PAGE = "current_page"
     FULL_BOOK = "full_book"
 
 
@@ -168,7 +167,7 @@ class AIService:
         self,
         user_input: str,
         page_context: str = "",
-        scope: ContextScope = ContextScope.CURRENT_PAGE,
+        scope: ContextScope = ContextScope.FULL_BOOK,
         rag_context: str = "",
     ) -> AsyncIterator[str]:
         """Stream an AI response token by token."""
@@ -250,9 +249,7 @@ class AIService:
     # ── Internal ─────────────────────────────────────────────────
 
     def _resolve_context(self, page_context: str, scope: ContextScope) -> str:
-        if scope == ContextScope.FULL_BOOK and self._book_context:
-            return self._book_context
-        return page_context
+        return self._book_context
 
     def _build_system_prompt(self) -> str:
         m = self._metadata
@@ -292,7 +289,7 @@ class AIService:
                 )
             messages.append(ChatMessage(
                 role="system",
-                content=f"Current page content:\n{header}{truncated}",
+                content=f"Document content:\n{header}{truncated}",
             ))
 
         if rag_context:

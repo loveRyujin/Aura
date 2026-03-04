@@ -195,10 +195,10 @@ class SidebarDragHandle(Widget):
 # ── Main sidebar ─────────────────────────────────────────────────
 
 _QUICK_PROMPTS = [
-    "Summarize this page",
+    "Summarize the document",
     "Explain the key concepts",
     "What are the main takeaways?",
-    "Translate this page to Chinese",
+    "Translate to Chinese",
 ]
 
 
@@ -278,7 +278,7 @@ class AISidebar(Widget):
     }
     """
 
-    scope: reactive[ContextScope] = reactive(ContextScope.CURRENT_PAGE)
+    scope: reactive[ContextScope] = reactive(ContextScope.FULL_BOOK)
 
     # ── Messages ─────────────────────────────────────────────────
 
@@ -317,7 +317,7 @@ class AISidebar(Widget):
             yield Label("Session ▾  [Ctrl+N] new", id="session-bar")
             with VerticalScroll(id="session-list"):
                 pass
-            yield Label("Page ← [s] switch scope", id="scope-indicator")
+            yield Label("Book ← using full document", id="scope-indicator")
             with VerticalScroll(id="chat-scroll"):
                 yield Label("Ask a question or try a quick prompt:", id="chat-empty")
                 for prompt_text in _QUICK_PROMPTS:
@@ -325,7 +325,7 @@ class AISidebar(Widget):
             yield Label("", id="slash-hint")
             yield Label("", id="rag-status")
             yield Label("", id="status-line")
-            yield Input(placeholder="Ask about this page... (/ for commands)", id="ai-input")
+            yield Input(placeholder="Ask about the book... (/ for commands)", id="ai-input")
 
     BINDINGS = [
         ("escape", "cancel_stream", "Cancel"),
@@ -344,23 +344,14 @@ class AISidebar(Widget):
     # ── Scope ────────────────────────────────────────────────────
 
     def watch_scope(self, value: ContextScope) -> None:
-        label = "Page" if value == ContextScope.CURRENT_PAGE else "Book"
         self.query_one("#scope-indicator", Label).update(
-            f"{label} ← [dim][s] switch[/]"
+            "Book ← using full document"
         )
-        placeholder = (
-            "Ask about this page... (/ for commands)"
-            if value == ContextScope.CURRENT_PAGE
-            else "Ask about the entire book... (/ for commands)"
-        )
-        self.query_one("#ai-input", Input).placeholder = placeholder
+        self.query_one("#ai-input", Input).placeholder = "Ask about the book... (/ for commands)"
 
     def toggle_scope(self) -> None:
-        if self.scope == ContextScope.CURRENT_PAGE:
-            self.scope = ContextScope.FULL_BOOK
-            self.post_message(self.BookContextRequested())
-        else:
-            self.scope = ContextScope.CURRENT_PAGE
+        # Scope is now always FULL_BOOK, no toggle needed
+        pass
 
     # ── Input handling ───────────────────────────────────────────
 
