@@ -26,9 +26,8 @@ A modern terminal-based PDF reader built with [Textual](https://textual.textuali
 git clone <repo-url>
 cd Aura
 
-# Create virtual environment and install
-uv venv --python 3.14
-uv pip install --python .venv/bin/python -e .
+# Recommended (modern uv workflow)
+uv sync --python 3.14
 
 # Or with pip
 python -m venv .venv
@@ -39,16 +38,14 @@ pip install -e .
 ## Usage
 
 ```bash
-source .venv/bin/activate
-
-# Method 1: CLI command (after pip install -e .)
-aura path/to/file.pdf
+# Method 1: with uv (no manual activate needed)
+uv run aura path/to/file.pdf
 
 # Method 2: Python module
-python -m aura path/to/file.pdf
+uv run python -m aura path/to/file.pdf
 
 # Launch without file (use 'o' to open file browser)
-aura
+uv run aura
 ```
 
 ## Build Standalone Executable
@@ -56,12 +53,11 @@ aura
 Package Aura as a single binary that runs without Python installed:
 
 ```bash
-# Install build dependency
-pip install pyinstaller
-# Or: pip install -e ".[build]"
+# Install build dependency (uv extra group)
+uv sync --extra build
 
 # Build the executable
-python build.py
+uv run python build.py
 
 # The binary is at dist/aura
 ./dist/aura path/to/file.pdf
