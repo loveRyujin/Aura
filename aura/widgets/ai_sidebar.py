@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
-from textual.events import MouseDown, MouseMove, MouseUp
+from textual.events import Key, MouseDown, MouseMove, MouseUp
 from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
-from textual.widgets import Input, Label, Markdown, Static
+from textual.widgets import Label, Markdown, Static, TextArea
 
 from aura.ai_service import SLASH_COMMANDS, ContextScope, expand_slash_command
 from aura.session import ChatSession, SessionManager
@@ -274,6 +274,7 @@ class AISidebar(Widget):
     }
     AISidebar #ai-input {
         dock: bottom;
+        height: 3;
         margin: 0 1 1 1;
     }
     """
@@ -326,7 +327,7 @@ class AISidebar(Widget):
             yield Label("", id="slash-hint")
             yield Label("", id="rag-status")
             yield Label("", id="status-line")
-            yield Input(placeholder="Ask about the book... (/ for commands)", id="ai-input")
+            yield TextArea(id="ai-input", placeholder="Ask about the book... (/ for commands)")
 
     BINDINGS = [
         ("escape", "cancel_stream", "Cancel"),
@@ -348,7 +349,7 @@ class AISidebar(Widget):
         self.query_one("#scope-indicator", Label).update(
             "Book ← using full document"
         )
-        self.query_one("#ai-input", Input).placeholder = "Ask about the book... (/ for commands)"
+        self.query_one("#ai-input", TextArea).placeholder = "Ask about the book... (/ for commands)"
 
     def toggle_scope(self) -> None:
         # Scope is now always FULL_BOOK, no toggle needed
@@ -356,10 +357,10 @@ class AISidebar(Widget):
 
     # ── Input handling ───────────────────────────────────────────
 
-    def on_input_changed(self, event: Input.Changed) -> None:
+    def on_text_area_changed(self, event: TextArea.Changed) -> None:
         """Show slash-command hints when input starts with /."""
         hint_label = self.query_one("#slash-hint", Label)
-        text = event.value.strip()
+        text = event.text_area.text.strip()
         if text.startswith("/") and not self._streaming:
             typed_cmd = text.split()[0][1:] if text else ""
             lines: list[str] = []
@@ -372,17 +373,27 @@ class AISidebar(Widget):
                 return
         hint_label.display = False
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        text = event.value.strip()
+    def _handle_input_submit(self) -> None:
+        """Handle Enter key to submit the input."""
+        text_area = self.query_one("#ai-input", TextArea)
+        text = text_area.text.strip()
         if not text or self._streaming:
             return
-        event.input.clear()
+        text_area.clear()
         self.query_one("#slash-hint", Label).display = False
 
         expanded = expand_slash_command(text)
         final_text = expanded if expanded else text
 
         self.post_message(self.ChatMessageSent(final_text, self.scope))
+
+    def on_key(self, event: Key) -> None:
+        """Handle Enter key to submit when TextArea is focused."""
+        if event.key == "enter":
+            text_area = self.query_one("#ai-input", TextArea)
+            if text_area.has_focus:
+                event.stop()
+                self._handle_input_submit()
 
     # ── Quick prompts ────────────────────────────────────────────
 
@@ -569,7 +580,7 @@ class AISidebar(Widget):
 
     def _focus_input(self) -> None:
         try:
-            self.query_one("#ai-input", Input).focus()
+            self.query_one("#ai-input", TextArea).focus()
         except Exception:
             pass
 

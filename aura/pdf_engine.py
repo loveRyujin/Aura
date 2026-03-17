@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import pymupdf
 import pymupdf4llm
@@ -23,6 +24,7 @@ class PDFEngine:
         self._path = path
         self._doc = pymupdf.open(str(path))
         self._cache: dict[int, str] = {}
+        self._image_cache: dict[tuple[int, int], Any] = {}
 
     @property
     def filename(self) -> str:
@@ -98,6 +100,43 @@ class PDFEngine:
         mat = pymupdf.Matrix(zoom, zoom)
         return page.get_pixmap(matrix=mat, alpha=False)
 
+    def render_page_image(self, page_num: int, width: int) -> Any:
+        """Rasterize a page to a PIL image (pdf2image first, PyMuPDF fallback)."""
+        cache_key = (page_num, width)
+        cached = self._image_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        image = self._render_with_pdf2image(page_num, width)
+        if image is None:
+            from PIL import Image as PILImage  # type: ignore[reportMissingImports]
+
+            pix = self.render_page_pixmap(page_num, width)
+            image = PILImage.frombytes("RGB", (pix.width, pix.height), bytes(pix.samples))
+
+        self._image_cache[cache_key] = image
+        return image
+
+    def _render_with_pdf2image(self, page_num: int, width: int) -> Any | None:
+        """Try Poppler-backed rendering via pdf2image for a single page."""
+        try:
+            from pdf2image import convert_from_path  # type: ignore[reportMissingImports]
+
+            images = convert_from_path(
+                str(self._path),
+                first_page=page_num + 1,
+                last_page=page_num + 1,
+                fmt="png",
+                size=(width, None),
+                single_file=True,
+                use_pdftocairo=True,
+                thread_count=1,
+            )
+        except Exception:
+            return None
+
+        return images[0] if images else None
+
     def search_text(self, query: str) -> list[tuple[int, str]]:
         """Search all pages for query, return list of (page_num, snippet)."""
         results: list[tuple[int, str]] = []
@@ -116,6 +155,7 @@ class PDFEngine:
     def close(self) -> None:
         self._doc.close()
         self._cache.clear()
+        self._image_cache.clear()
 
     def __del__(self) -> None:
         try:

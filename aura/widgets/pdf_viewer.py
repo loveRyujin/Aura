@@ -361,17 +361,14 @@ class PDFViewer(Widget):
 
         import asyncio
 
-        from PIL import Image as PILImage
-
         scroll_area = self.query_one("#pdf-scroll")
         cols = scroll_area.size.width
         render_width = max(800, cols * 10)
         page = self.current_page
         engine = self._engine
 
-        def _cpu_work() -> PILImage.Image:
-            pix = engine.render_page_pixmap(page, render_width)
-            return PILImage.frombytes("RGB", (pix.width, pix.height), bytes(pix.samples))
+        def _cpu_work():
+            return engine.render_page_image(page, render_width)
 
         pil_img = await asyncio.to_thread(_cpu_work)
 
