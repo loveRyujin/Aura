@@ -2,6 +2,9 @@
 
 A modern terminal-based PDF reader built with [Textual](https://textual.textualize.io/), featuring an integrated AI assistant for analyzing and summarizing book content.
 
+> **Status:** This project is under development.
+> **Note:** The author is still learning the related terminal graphics protocols.
+
 ## Features
 
 - **PDF Rendering** - Text mode (Markdown) and image mode (Sixel / Kitty TGP / Halfcell)
@@ -18,6 +21,7 @@ A modern terminal-based PDF reader built with [Textual](https://textual.textuali
 
 - Python >= 3.13
 - A terminal emulator (not an IDE console)
+- Poppler utils (`pdftoppm` / `pdftocairo`) available in `PATH`
 
 ## Installation
 
@@ -28,6 +32,9 @@ cd Aura
 
 # Recommended (modern uv workflow)
 uv sync --python 3.14
+
+# Ensure Poppler is installed (Linux example)
+sudo apt-get install -y poppler-utils
 
 # Or with pip
 python -m venv .venv
@@ -96,6 +103,8 @@ AURA_RENDERER=sixel aura book.pdf
 AURA_RENDERER=tgp aura book.pdf
 AURA_RENDERER=halfcell aura book.pdf
 ```
+
+Under the hood, Aura rasterizes PDF pages through Poppler (`pdftocairo` / `pdftoppm`) via `pdf2image`, then renders them with terminal graphics protocols (Kitty TGP / Sixel / Halfcell). If Poppler-backed rendering is unavailable for a page, Aura falls back to the internal PyMuPDF raster path.
 
 ## AI Configuration
 
