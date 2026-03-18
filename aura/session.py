@@ -23,6 +23,7 @@ class ChatSession:
     book_path: str
     messages: list[ChatMessage] = field(default_factory=list)
     compressed_summary: str = ""
+    current_page: int = 0
     created_at: str = ""
     updated_at: str = ""
 

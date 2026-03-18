@@ -140,11 +140,16 @@ class AuraApp(App):
         session = self._session_mgr.get_or_create_for_book(str(path))
         self._ai_service.bind_session(session)
 
+        # Restore reading progress
+        start_page = session.current_page
+        if start_page > 0:
+            viewer.go_to_page(start_page)
+
         sidebar = self.query_one(AISidebar)
         sidebar.update_session_bar(session)
         sidebar.rebuild_chat(session)
 
-        self.sub_title = f"{engine.filename}  p.1/{engine.page_count}"
+        self.sub_title = f"{engine.filename}  p.{start_page + 1}/{engine.page_count}"
 
         if self._rag_service.has_index(str(path)):
             sidebar.update_rag_status("Index ready", ready=True)
@@ -174,6 +179,9 @@ class AuraApp(App):
             self._update_ai_location()
             sidebar = self.query_one(AISidebar)
             session = self._session_mgr.active_session
+            if session:
+                session.current_page = event.page
+                self._session_mgr.save_session(session)
             sidebar.update_context_info(
                 page=event.page,
                 section=viewer.engine.get_section_for_page(event.page),
