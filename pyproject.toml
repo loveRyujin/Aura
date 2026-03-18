@@ -18,6 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 build = ["pyinstaller>=6.0"]
+test = ["pytest>=8.0"]
 
 [project.scripts]
 aura = "aura.__main__:main"
