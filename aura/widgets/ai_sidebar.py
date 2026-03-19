@@ -6,12 +6,11 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
 from textual.events import Key, MouseDown, MouseMove, MouseUp
 from textual.message import Message
-from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Label, Markdown, Static, TextArea
 
-from aura.ai_service import SLASH_COMMANDS, ContextScope, expand_slash_command
-from aura.session import ChatSession, SessionManager
+from aura.ai_service import SLASH_COMMANDS, expand_slash_command
+from aura.session import ChatSession
 
 MIN_WIDTH = 30
 MAX_WIDTH_RATIO = 0.7
@@ -234,14 +233,6 @@ class AISidebar(Widget):
         background: $surface;
     }
 
-    AISidebar #scope-indicator {
-        height: 1;
-        padding: 0 2;
-        color: $accent;
-        text-style: bold;
-        background: $primary-background;
-    }
-
     AISidebar #chat-scroll {
         height: 1fr;
         padding: 1 1;
@@ -279,18 +270,12 @@ class AISidebar(Widget):
     }
     """
 
-    scope: reactive[ContextScope] = reactive(ContextScope.FULL_BOOK)
-
     # ── Messages ─────────────────────────────────────────────────
 
     class ChatMessageSent(Message):
-        def __init__(self, text: str, scope: ContextScope) -> None:
+        def __init__(self, text: str) -> None:
             super().__init__()
             self.text = text
-            self.scope = scope
-
-    class BookContextRequested(Message):
-        """Ask the app to load full book context."""
 
     class CancelRequested(Message):
         """Ask the app to cancel the in-flight AI stream."""
@@ -308,6 +293,7 @@ class AISidebar(Widget):
     def __init__(self) -> None:
         super().__init__()
         self._streaming = False
+        self._ready_for_questions = False
         self._current_bubble: ChatBubble | None = None
         self._ai_tokens: list[str] = []
         self._session_list_open = False
@@ -319,7 +305,6 @@ class AISidebar(Widget):
             yield Label("Session ▾  [Ctrl+N] new", id="session-bar")
             with VerticalScroll(id="session-list"):
                 pass
-            yield Label("Book ← using full document", id="scope-indicator")
             with VerticalScroll(id="chat-scroll"):
                 yield Label("Ask a question or try a quick prompt:", id="chat-empty")
                 for prompt_text in _QUICK_PROMPTS:
@@ -342,18 +327,6 @@ class AISidebar(Widget):
         max_width = int(screen_width * MAX_WIDTH_RATIO)
         new_width = max(MIN_WIDTH, min(event.width, max_width))
         self.styles.width = new_width
-
-    # ── Scope ────────────────────────────────────────────────────
-
-    def watch_scope(self, value: ContextScope) -> None:
-        self.query_one("#scope-indicator", Label).update(
-            "Book ← using full document"
-        )
-        self.query_one("#ai-input", TextArea).placeholder = "Ask about the book... (/ for commands)"
-
-    def toggle_scope(self) -> None:
-        # Scope is now always FULL_BOOK, no toggle needed
-        pass
 
     # ── Input handling ───────────────────────────────────────────
 
@@ -379,13 +352,16 @@ class AISidebar(Widget):
         text = text_area.text.strip()
         if not text or self._streaming:
             return
+        if not self._ready_for_questions:
+            self.show_index_blocked_hint()
+            return
         text_area.clear()
         self.query_one("#slash-hint", Label).display = False
 
         expanded = expand_slash_command(text)
         final_text = expanded if expanded else text
 
-        self.post_message(self.ChatMessageSent(final_text, self.scope))
+        self.post_message(self.ChatMessageSent(final_text))
 
     def on_key(self, event: Key) -> None:
         """Handle Enter key to submit when TextArea is focused."""
@@ -400,7 +376,10 @@ class AISidebar(Widget):
     def on_quick_prompt_clicked(self, event: QuickPrompt.Clicked) -> None:
         if self._streaming:
             return
-        self.post_message(self.ChatMessageSent(event.text, self.scope))
+        if not self._ready_for_questions:
+            self.show_index_blocked_hint()
+            return
+        self.post_message(self.ChatMessageSent(event.text))
 
     # ── Session picker ───────────────────────────────────────────
 
@@ -566,7 +545,7 @@ class AISidebar(Widget):
             if isinstance(child, (ChatBubble, AiMarkdownBubble)):
                 child.remove()
         self._show_empty_state()
-        self.post_message(self.ChatMessageSent("__clear__", self.scope))
+        self.post_message(self.ChatMessageSent("__clear__"))
 
     def action_new_session(self) -> None:
         self.post_message(self.NewSessionRequested())
@@ -589,18 +568,25 @@ class AISidebar(Widget):
     def update_rag_status(self, text: str, ready: bool = False) -> None:
         label = self.query_one("#rag-status", Label)
         label.update(text)
+        self._ready_for_questions = ready
+        input_widget = self.query_one("#ai-input", TextArea)
+        input_widget.disabled = not ready
+        input_widget.placeholder = (
+            "Ask about the book... (/ for commands)"
+            if ready
+            else "Wait for indexing to finish before asking questions"
+        )
         if ready:
             label.add_class("ready")
         else:
             label.remove_class("ready")
 
-    def show_rag_pending_hint(self) -> None:
+    def show_index_blocked_hint(self) -> None:
         scroll = self.query_one("#chat-scroll", VerticalScroll)
         hint = ChatBubble(classes="ai-msg")
         hint.update(
-            "[dim]RAG index is still building. "
-            "Your question will be answered with the current page context only. "
-            "Full-book retrieval will be available once indexing completes.[/]"
+            "[dim]The retrieval index for this book is still being built. "
+            "Please wait until indexing finishes before asking questions.[/]"
         )
         scroll.mount(hint)
         scroll.scroll_end(animate=False)

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from enum import Enum
 
 from litellm import acompletion
 
@@ -18,7 +17,7 @@ You are Aura, an intelligent PDF reading assistant.
 The user is reading a PDF document and may ask you to summarize, \
 extract key points, translate, or answer questions about the content.
 Be concise, accurate, and helpful.
-When given page content as context, base your answers on that content.
+When given document excerpts as context, base your answers on that content.
 {metadata}"""
 
 
@@ -89,13 +88,6 @@ def expand_slash_command(raw_input: str) -> str | None:
         return None
     return cmd.prompt_template.replace("{args}", args).strip()
 
-
-# ── Context scope ────────────────────────────────────────────────
-
-class ContextScope(Enum):
-    FULL_BOOK = "full_book"
-
-
 # ── Compression prompt ───────────────────────────────────────────
 
 _COMPRESS_PROMPT = (
@@ -114,7 +106,6 @@ class AIService:
 
     def __init__(self, config: AIConfig) -> None:
         self._config = config
-        self._book_context: str = ""
         self._metadata = PDFMetadata()
         self._session: ChatSession | None = None
         self._rounds_since_compress: int = 0
@@ -147,17 +138,7 @@ class AIService:
         self._metadata.current_page = page
         self._metadata.current_section = section
 
-    # ── Book context ─────────────────────────────────────────────
-
-    def set_book_context(self, text: str) -> None:
-        self._book_context = text
-
-    @property
-    def has_book_context(self) -> bool:
-        return bool(self._book_context)
-
     def clear_all(self) -> None:
-        self._book_context = ""
         self._metadata = PDFMetadata()
         self._session = None
 
@@ -166,13 +147,10 @@ class AIService:
     async def stream_response(
         self,
         user_input: str,
-        page_context: str = "",
-        scope: ContextScope = ContextScope.FULL_BOOK,
         rag_context: str = "",
     ) -> AsyncIterator[str]:
         """Stream an AI response token by token."""
-        context = self._resolve_context(page_context, scope)
-        messages = self._build_messages(user_input, context, rag_context)
+        messages = self._build_messages(user_input, rag_context)
 
         if self._session:
             self._session.messages.append(
@@ -248,9 +226,6 @@ class AIService:
 
     # ── Internal ─────────────────────────────────────────────────
 
-    def _resolve_context(self, page_context: str, scope: ContextScope) -> str:
-        return self._book_context
-
     def _build_system_prompt(self) -> str:
         m = self._metadata
         parts: list[str] = []
@@ -261,9 +236,7 @@ class AIService:
         metadata_block = "\n".join(parts)
         return _SYSTEM_TEMPLATE.format(metadata=metadata_block)
 
-    def _build_messages(
-        self, user_input: str, context: str, rag_context: str = ""
-    ) -> list[ChatMessage]:
+    def _build_messages(self, user_input: str, rag_context: str = "") -> list[ChatMessage]:
         messages: list[ChatMessage] = [
             ChatMessage(role="system", content=self._build_system_prompt())
         ]
@@ -277,20 +250,6 @@ class AIService:
         keep = _RECENT_ROUNDS * 2
         recent = self.history[-keep:] if self.history else []
         messages.extend(recent)
-
-        m = self._metadata
-        if context:
-            truncated = context[:16000]
-            header = ""
-            if m.current_section:
-                header = (
-                    f"Current location: {m.current_section} "
-                    f"(p.{m.current_page + 1}/{m.page_count})\n\n"
-                )
-            messages.append(ChatMessage(
-                role="system",
-                content=f"Document content:\n{header}{truncated}",
-            ))
 
         if rag_context:
             messages.append(ChatMessage(

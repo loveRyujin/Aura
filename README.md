@@ -12,7 +12,7 @@ A modern terminal-based PDF reader built with [Textual](https://textual.textuali
 - **Smooth Navigation** - Debounced page flipping with adjacent-page prefetch for zero-lag reading
 - **Table of Contents** - Collapsible, resizable TOC panel extracted from PDF outline
 - **Full-Text Search** - Search across all pages with `/`
-- **AI Assistant** - Keyboard-driven chat sidebar supporting page-level and whole-book analysis
+- **AI Assistant** - Keyboard-driven chat sidebar with whole-book semantic retrieval
 - **Multi-LLM Support** - OpenAI, Anthropic, Ollama, and 100+ providers via LiteLLM
 - **File Browser** - Open any PDF with the built-in file dialog
 - **Standalone Build** - Package as a single executable with PyInstaller
@@ -77,7 +77,6 @@ uv run python build.py
 | `o`        | Open PDF file                      |
 | `t`        | Toggle TOC panel                   |
 | `a`        | Toggle AI sidebar                  |
-| `s`        | Toggle AI scope (page / book)      |
 | `v`        | Toggle view mode (text / image)    |
 | `c`        | Toggle scroll mode (page / scroll) |
 | `/`        | Search in PDF                      |
@@ -139,6 +138,12 @@ api_key = "sk-ant-..."
 The `provider` field controls how the model string is resolved. For Ollama, `api_base` defaults to `http://localhost:11434` and the `ollama/` prefix is auto-added. See `config.example.toml` for all options.
 
 Aura uses [LiteLLM](https://docs.litellm.ai/) under the hood, supporting 100+ LLM providers.
+
+## RAG Indexing
+
+Aura automatically builds a local retrieval index the first time you open a PDF. While indexing is running, AI questions are disabled and the sidebar shows progress. Once complete, later opens of the same file reuse the local index automatically.
+
+If the PDF file changes, Aura detects the change and rebuilds the index before allowing new questions.
 
 ## Tech Stack
 

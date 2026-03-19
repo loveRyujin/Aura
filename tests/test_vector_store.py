@@ -164,3 +164,30 @@ class TestVectorStore:
             # Should create the directory
             assert db_path.parent.exists()
             store.close()
+
+    def test_metadata_round_trip(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "test.db"
+            store = VectorStore(db_path, dimension=3)
+
+            store.set_metadata("file_mtime", "123")
+            store.set_metadata("chunk_count", "8")
+
+            assert store.get_metadata("file_mtime") == "123"
+            assert store.get_metadata("chunk_count") == "8"
+            store.close()
+
+    def test_clear_removes_metadata(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "test.db"
+            store = VectorStore(db_path, dimension=3)
+
+            chunks = [Chunk(text="test", page_num=0, section="test", chunk_index=0)]
+            embeddings = [[1.0, 0.0, 0.0]]
+            store.add_chunks(chunks, embeddings)
+            store.set_metadata("file_mtime", "123")
+
+            store.clear()
+
+            assert store.get_metadata("file_mtime") is None
+            store.close()

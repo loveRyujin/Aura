@@ -21,6 +21,10 @@ from aura.widgets.pdf_viewer import PDFViewer
 from aura.widgets.search_dialog import SearchDialog
 from aura.widgets.toc_panel import TOCPanel
 
+_INDEX_BUILDING_MSG = "正在为本书建立检索索引，请等待完成后再提问"
+_INDEX_READY_MSG = "索引已就绪，可以开始提问"
+_INDEX_STALE_MSG = "文档已变更，正在重建索引，请稍候"
+
 
 class _GoToPageScreen(ModalScreen[int | None]):
     """Simple modal to enter a page number."""
@@ -104,6 +108,7 @@ class AuraApp(App):
         self._session_mgr = SessionManager()
         self._ai_worker: Worker | None = None
         self._rag_indexing = False
+        self._active_book_path = ""
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -125,6 +130,7 @@ class AuraApp(App):
         engine = PDFEngine(path)
         viewer = self.query_one(PDFViewer)
         viewer.load_pdf(engine)
+        self._active_book_path = str(path)
 
         toc_panel = self.query_one(TOCPanel)
         toc_entries = engine.get_toc()
@@ -151,11 +157,14 @@ class AuraApp(App):
 
         self.sub_title = f"{engine.filename}  p.{start_page + 1}/{engine.page_count}"
 
-        if self._rag_service.has_index(str(path)):
-            sidebar.update_rag_status("Index ready", ready=True)
+        status = self._rag_service.get_index_status(str(path))
+        if status.ready:
+            chunk_text = f" ({status.chunk_count} chunks)" if status.chunk_count else ""
+            sidebar.update_rag_status(f"{_INDEX_READY_MSG}{chunk_text}", ready=True)
         else:
             self._rag_indexing = True
-            sidebar.update_rag_status("Building index...")
+            start_msg = _INDEX_STALE_MSG if status.stale else _INDEX_BUILDING_MSG
+            sidebar.update_rag_status(start_msg, ready=False)
             self.run_worker(
                 self._build_rag_index(engine, str(path)), exclusive=False
             )
@@ -197,39 +206,22 @@ class AuraApp(App):
         sidebar = self.query_one(AISidebar)
 
         def _on_progress(done: int, total: int) -> None:
-            sidebar.update_rag_status(f"Indexing: {done}/{total} chunks...")
+            sidebar.update_rag_status(f"索引构建中：{done}/{total}", ready=False)
 
         try:
             count = await self._rag_service.build_index(
                 engine, book_path, on_progress=_on_progress
             )
-            if count:
-                sidebar.update_rag_status(
-                    f"Index ready ({count} chunks)", ready=True
-                )
-            else:
-                sidebar.update_rag_status("Index ready", ready=True)
+            status = self._rag_service.get_index_status(book_path)
+            if self._active_book_path == book_path:
+                chunk_count = status.chunk_count or count
+                chunk_text = f" ({chunk_count} chunks)" if chunk_count else ""
+                sidebar.update_rag_status(f"{_INDEX_READY_MSG}{chunk_text}", ready=True)
         except Exception as exc:
-            sidebar.update_rag_status(f"Index failed: {exc!s:.40}")
+            if self._active_book_path == book_path:
+                sidebar.update_rag_status(f"索引构建失败：{exc!s:.40}", ready=False)
         finally:
             self._rag_indexing = False
-
-    # ── AI events ────────────────────────────────────────────────
-
-    def on_aisidebar_book_context_requested(
-        self, event: AISidebar.BookContextRequested
-    ) -> None:
-        viewer = self.query_one(PDFViewer)
-        if viewer.engine and not self._ai_service.has_book_context:
-            self.notify("Loading book context...", severity="information")
-            self.run_worker(self._load_book_context(), exclusive=False)
-
-    async def _load_book_context(self) -> None:
-        viewer = self.query_one(PDFViewer)
-        if viewer.engine:
-            text = viewer.engine.get_full_text(max_pages=100)
-            self._ai_service.set_book_context(text)
-            self.notify("Book context ready.", severity="information")
 
     def on_aisidebar_chat_message_sent(
         self, event: AISidebar.ChatMessageSent
@@ -255,10 +247,7 @@ class AuraApp(App):
         viewer = self.query_one(PDFViewer)
         if viewer.engine:
             book_path = str(viewer.engine._path)
-            if self._rag_indexing:
-                sidebar = self.query_one(AISidebar)
-                sidebar.show_rag_pending_hint()
-            elif await self._rag_service.has_index_async(book_path):
+            if await self._rag_service.has_index_async(book_path):
                 chunks = await self._rag_service.retrieve(text, book_path)
                 rag_context = RAGService.format_context(chunks)
 

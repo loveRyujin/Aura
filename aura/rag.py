@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
-from collections.abc import Callable
 from dataclasses import dataclass
+from collections.abc import Callable
 from pathlib import Path
 
 from aura.chunker import Chunk, chunk_document
@@ -27,6 +26,14 @@ class RetrievedChunk:
     distance: float
 
 
+@dataclass
+class IndexStatus:
+    exists: bool
+    ready: bool
+    stale: bool
+    chunk_count: int = 0
+
+
 class RAGService:
     """Builds vector indexes for PDFs and retrieves relevant chunks."""
 
@@ -46,12 +53,32 @@ class RAGService:
             )
         return self._stores[book_path]
 
+    @staticmethod
+    def _file_mtime(book_path: str) -> str:
+        return str(Path(book_path).stat().st_mtime_ns)
+
+    def get_index_status(self, book_path: str) -> IndexStatus:
+        store = self._get_store(book_path)
+        if not store.is_indexed():
+            return IndexStatus(exists=False, ready=False, stale=False)
+
+        stored_mtime = store.get_metadata("file_mtime")
+        chunk_count = int(store.get_metadata("chunk_count") or "0")
+        current_mtime = self._file_mtime(book_path)
+        stale = stored_mtime is not None and stored_mtime != current_mtime
+        return IndexStatus(
+            exists=True,
+            ready=not stale,
+            stale=stale,
+            chunk_count=chunk_count,
+        )
+
     def has_index(self, book_path: str) -> bool:
-        return self._get_store(book_path).is_indexed()
+        return self.get_index_status(book_path).ready
 
     async def has_index_async(self, book_path: str) -> bool:
         """Thread-safe async version of has_index."""
-        return await asyncio.to_thread(self.has_index, book_path)
+        return self.has_index(book_path)
 
     async def build_index(
         self,
@@ -64,11 +91,13 @@ class RAGService:
         Returns the total number of chunks indexed.
         """
         store = self._get_store(book_path)
-        if await asyncio.to_thread(store.is_indexed):
+        status = self.get_index_status(book_path)
+        if status.ready:
             return 0
+        if status.stale:
+            store.clear()
 
-        chunks = await asyncio.to_thread(
-            chunk_document,
+        chunks = chunk_document(
             engine,
             chunk_size=self._config.chunk_size,
             chunk_overlap=self._config.chunk_overlap,
@@ -87,7 +116,9 @@ class RAGService:
             if on_progress:
                 on_progress(min(start + _EMBED_BATCH, total), total)
 
-        await asyncio.to_thread(store.add_chunks, chunks, all_embeddings)
+        store.add_chunks(chunks, all_embeddings)
+        store.set_metadata("file_mtime", self._file_mtime(book_path))
+        store.set_metadata("chunk_count", str(total))
         return total
 
     async def retrieve(
@@ -98,15 +129,13 @@ class RAGService:
     ) -> list[RetrievedChunk]:
         """Embed the query and return the most relevant chunks."""
         store = self._get_store(book_path)
-        is_indexed = await asyncio.to_thread(store.is_indexed)
+        is_indexed = store.is_indexed()
         if not is_indexed:
             return []
 
         k = top_k or self._config.top_k
         query_emb = await self._embedder.embed_query(query)
-        results: list[SearchResult] = await asyncio.to_thread(
-            store.search, query_emb, k
-        )
+        results: list[SearchResult] = store.search(query_emb, k)
         return [
             RetrievedChunk(
                 text=r.text,

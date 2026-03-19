@@ -43,6 +43,12 @@ class VectorStore:
         conn = self._conn
         assert conn is not None
         conn.execute(
+            "CREATE TABLE IF NOT EXISTS metadata ("
+            "  key TEXT PRIMARY KEY,"
+            "  value TEXT NOT NULL"
+            ")"
+        )
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS chunks ("
             "  id INTEGER PRIMARY KEY,"
             "  page INTEGER NOT NULL,"
@@ -85,6 +91,23 @@ class VectorStore:
             )
         conn.commit()
 
+    def set_metadata(self, key: str, value: str) -> None:
+        conn = self._get_conn()
+        conn.execute(
+            "INSERT INTO metadata (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+        conn.commit()
+
+    def get_metadata(self, key: str) -> str | None:
+        conn = self._get_conn()
+        row = conn.execute(
+            "SELECT value FROM metadata WHERE key = ?",
+            (key,),
+        ).fetchone()
+        return row[0] if row else None
+
     def search(
         self,
         query_embedding: list[float],
@@ -113,6 +136,7 @@ class VectorStore:
         conn = self._get_conn()
         conn.execute("DELETE FROM chunks")
         conn.execute("DELETE FROM vec_chunks")
+        conn.execute("DELETE FROM metadata")
         conn.commit()
 
     def close(self) -> None:
