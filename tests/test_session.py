@@ -125,6 +125,31 @@ class TestSessionManager:
             loaded = mgr.get_session(session.id)
             assert loaded is None
 
+    def test_rename_session(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = SessionManager(base_dir=Path(tmpdir))
+            session = mgr.create_session("/path/to/book.pdf", "Old Title")
+
+            renamed = mgr.rename_session(session.id, "New Title")
+
+            assert renamed is not None
+            assert renamed.title == "New Title"
+            reloaded = mgr.get_session(session.id)
+            assert reloaded is not None
+            assert reloaded.title == "New Title"
+
+    def test_rename_session_rejects_blank_title(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = SessionManager(base_dir=Path(tmpdir))
+            session = mgr.create_session("/path/to/book.pdf", "Old Title")
+
+            renamed = mgr.rename_session(session.id, "   ")
+
+            assert renamed is None
+            reloaded = mgr.get_session(session.id)
+            assert reloaded is not None
+            assert reloaded.title == "Old Title"
+
     def test_get_or_create_for_book_existing(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             mgr = SessionManager(base_dir=Path(tmpdir))

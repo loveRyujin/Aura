@@ -288,6 +288,12 @@ class AISidebar(Widget):
     class NewSessionRequested(Message):
         """Ask the app to create a new session."""
 
+    class RenameSessionRequested(Message):
+        """Ask the app to rename the current session."""
+
+    class DeleteSessionRequested(Message):
+        """Ask the app to delete the current session."""
+
     # ── Init ─────────────────────────────────────────────────────
 
     def __init__(self) -> None:
@@ -318,6 +324,8 @@ class AISidebar(Widget):
         ("escape", "cancel_stream", "Cancel"),
         ("ctrl+l", "clear_chat", "Clear"),
         ("ctrl+n", "new_session", "New Session"),
+        ("ctrl+r", "rename_session", "Rename Session"),
+        ("ctrl+d", "delete_session", "Delete Session"),
     ]
 
     # ── Resize ───────────────────────────────────────────────────
@@ -386,7 +394,7 @@ class AISidebar(Widget):
     def update_session_bar(self, session: ChatSession | None) -> None:
         title = session.title[:25] if session else "No session"
         self.query_one("#session-bar", Label).update(
-            f"{title} ▾  [dim][Ctrl+N] new[/]"
+            f"{title} ▾  [dim][Ctrl+N] new [Ctrl+R] rename [Ctrl+D] delete[/]"
         )
 
     def refresh_session_list(self, sessions: list[ChatSession], active_id: str) -> None:
@@ -549,6 +557,16 @@ class AISidebar(Widget):
 
     def action_new_session(self) -> None:
         self.post_message(self.NewSessionRequested())
+
+    def action_rename_session(self) -> None:
+        if self._streaming:
+            return
+        self.post_message(self.RenameSessionRequested())
+
+    def action_delete_session(self) -> None:
+        if self._streaming:
+            return
+        self.post_message(self.DeleteSessionRequested())
 
     # ── Toggle ───────────────────────────────────────────────────
 

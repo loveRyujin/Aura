@@ -13,6 +13,7 @@ A modern terminal-based PDF reader built with [Textual](https://textual.textuali
 - **Table of Contents** - Collapsible, resizable TOC panel extracted from PDF outline
 - **Full-Text Search** - Search across all pages with `/`
 - **AI Assistant** - Keyboard-driven chat sidebar with whole-book semantic retrieval
+- **Session Management** - Create, rename, delete, and switch between per-book chat sessions
 - **Multi-LLM Support** - OpenAI, Anthropic, Ollama, and 100+ providers via LiteLLM
 - **File Browser** - Open any PDF with the built-in file dialog
 - **Standalone Build** - Package as a single executable with PyInstaller
@@ -77,6 +78,9 @@ uv run python build.py
 | `o`        | Open PDF file                      |
 | `t`        | Toggle TOC panel                   |
 | `a`        | Toggle AI sidebar                  |
+| `Ctrl+N`   | New chat session                   |
+| `Ctrl+R`   | Rename current session            |
+| `Ctrl+D`   | Delete current session            |
 | `v`        | Toggle view mode (text / image)    |
 | `c`        | Toggle scroll mode (page / scroll) |
 | `/`        | Search in PDF                      |

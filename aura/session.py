@@ -102,6 +102,18 @@ class SessionManager:
         if self._active and self._active.id == session_id:
             self._active = None
 
+    def rename_session(self, session_id: str, title: str) -> ChatSession | None:
+        session = self.get_session(session_id)
+        cleaned = title.strip()
+        if not session or not cleaned:
+            return None
+
+        session.title = cleaned[:40]
+        self.save_session(session)
+        if self._active and self._active.id == session_id:
+            self._active = session
+        return session
+
     def save_session(self, session: ChatSession | None = None) -> None:
         session = session or self._active
         if not session:

@@ -71,6 +71,86 @@ class _GoToPageScreen(ModalScreen[int | None]):
         self.dismiss(None)
 
 
+class _RenameSessionScreen(ModalScreen[str | None]):
+    """Modal to rename the current chat session."""
+
+    DEFAULT_CSS = """
+    _RenameSessionScreen {
+        align: center middle;
+    }
+
+    _RenameSessionScreen #rename-container {
+        width: 60;
+        height: auto;
+        border: thick $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    """
+
+    BINDINGS = [("escape", "cancel", "Cancel")]
+
+    def __init__(self, current_title: str) -> None:
+        super().__init__()
+        self._current_title = current_title
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="rename-container"):
+            yield Label("Rename session:")
+            yield TextInput(value=self._current_title, id="rename-input")
+
+    def on_mount(self) -> None:
+        input_widget = self.query_one("#rename-input", TextInput)
+        input_widget.focus()
+        input_widget.action_end()
+
+    def on_input_submitted(self, event: TextInput.Submitted) -> None:
+        title = event.value.strip()
+        self.dismiss(title or None)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+class _ConfirmDeleteScreen(ModalScreen[bool]):
+    """Modal to confirm deleting the current chat session."""
+
+    DEFAULT_CSS = """
+    _ConfirmDeleteScreen {
+        align: center middle;
+    }
+
+    _ConfirmDeleteScreen #delete-container {
+        width: 60;
+        height: auto;
+        border: thick $error;
+        background: $surface;
+        padding: 1 2;
+    }
+    """
+
+    BINDINGS = [
+        ("escape", "cancel", "Cancel"),
+        ("y", "confirm", "Delete"),
+        ("n", "cancel", "Cancel"),
+    ]
+
+    def __init__(self, title: str) -> None:
+        super().__init__()
+        self._title = title
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="delete-container"):
+            yield Label(f"Delete session '{self._title}'?")
+            yield Label("Press Y to delete or Esc/N to cancel.")
+
+    def action_confirm(self) -> None:
+        self.dismiss(True)
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)
+
+
 class AuraApp(App):
     """A modern TUI PDF reader with AI assistant."""
 
@@ -293,13 +373,7 @@ class AuraApp(App):
         book_path = str(viewer.engine._path) if viewer.engine else ""
         self._session_mgr.save_session()
         session = self._session_mgr.create_session(book_path)
-        self._session_mgr.set_active(session)
-        self._ai_service.bind_session(session)
-
-        sidebar = self.query_one(AISidebar)
-        sidebar.update_session_bar(session)
-        sidebar.rebuild_chat(session)
-        self._refresh_session_list()
+        self._activate_session(session)
 
     def on_aisidebar_session_switched(
         self, event: AISidebar.SessionSwitched
@@ -308,12 +382,62 @@ class AuraApp(App):
         session = self._session_mgr.get_session(event.session_id)
         if not session:
             return
-        self._session_mgr.set_active(session)
-        self._ai_service.bind_session(session)
+        self._activate_session(session)
 
-        sidebar = self.query_one(AISidebar)
-        sidebar.update_session_bar(session)
-        sidebar.rebuild_chat(session)
+    def on_aisidebar_rename_session_requested(
+        self, event: AISidebar.RenameSessionRequested
+    ) -> None:
+        session = self._session_mgr.active_session
+        if not session:
+            self.notify("No active session to rename.", severity="warning")
+            return
+        self.push_screen(
+            _RenameSessionScreen(session.title),
+            callback=self._on_session_renamed,
+        )
+
+    def _on_session_renamed(self, title: str | None) -> None:
+        if not title:
+            return
+        session = self._session_mgr.active_session
+        if not session:
+            return
+        renamed = self._session_mgr.rename_session(session.id, title)
+        if not renamed:
+            return
+        self._activate_session(renamed)
+        self.notify(f"Renamed session to '{renamed.title}'.", severity="information")
+
+    def on_aisidebar_delete_session_requested(
+        self, event: AISidebar.DeleteSessionRequested
+    ) -> None:
+        session = self._session_mgr.active_session
+        if not session:
+            self.notify("No active session to delete.", severity="warning")
+            return
+        self.push_screen(
+            _ConfirmDeleteScreen(session.title),
+            callback=self._on_session_deleted,
+        )
+
+    def _on_session_deleted(self, confirmed: bool) -> None:
+        if not confirmed:
+            return
+        session = self._session_mgr.active_session
+        if not session:
+            return
+
+        deleted_title = session.title
+        deleted_id = session.id
+        book_path = session.book_path
+        self._session_mgr.delete_session(deleted_id)
+
+        fallback = self._next_session_after_delete(book_path, deleted_id)
+        if fallback is None:
+            fallback = self._session_mgr.create_session(book_path)
+
+        self._activate_session(fallback)
+        self.notify(f"Deleted session '{deleted_title}'.", severity="information")
 
     def _refresh_session_list(self) -> None:
         viewer = self.query_one(PDFViewer)
@@ -322,6 +446,23 @@ class AuraApp(App):
         active = self._session_mgr.active_session
         active_id = active.id if active else ""
         self.query_one(AISidebar).refresh_session_list(sessions, active_id)
+
+    def _activate_session(self, session) -> None:
+        self._session_mgr.set_active(session)
+        self._ai_service.bind_session(session)
+        sidebar = self.query_one(AISidebar)
+        sidebar.update_session_bar(session)
+        sidebar.rebuild_chat(session)
+        self._refresh_session_list()
+
+    def _next_session_after_delete(
+        self, book_path: str, deleted_id: str
+    ):
+        sessions = self._session_mgr.list_sessions(book_path)
+        for candidate in sessions:
+            if candidate.id != deleted_id:
+                return candidate
+        return None
 
     # ── Actions ──────────────────────────────────────────────────
 
