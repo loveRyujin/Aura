@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
-from textual.events import Key, MouseDown, MouseMove, MouseUp
+from textual.events import MouseDown, MouseMove, MouseUp
 from textual.message import Message
 from textual.widget import Widget
-from textual.widgets import Label, Markdown, Static, TextArea
+from textual.widgets import Input, Label, Markdown, Static
 
 from aura.ai_service import SLASH_COMMANDS, expand_slash_command
 from aura.session import ChatSession
@@ -318,7 +318,7 @@ class AISidebar(Widget):
             yield Label("", id="slash-hint")
             yield Label("", id="rag-status")
             yield Label("", id="status-line")
-            yield TextArea(id="ai-input", placeholder="Ask about the book... (/ for commands)")
+            yield Input(id="ai-input", placeholder="Ask about the book... (/ for commands)")
 
     BINDINGS = [
         ("escape", "cancel_stream", "Cancel"),
@@ -338,10 +338,12 @@ class AISidebar(Widget):
 
     # ── Input handling ───────────────────────────────────────────
 
-    def on_text_area_changed(self, event: TextArea.Changed) -> None:
+    def on_input_changed(self, event: Input.Changed) -> None:
         """Show slash-command hints when input starts with /."""
+        if event.input.id != "ai-input":
+            return
         hint_label = self.query_one("#slash-hint", Label)
-        text = event.text_area.text.strip()
+        text = event.value.strip()
         if text.startswith("/") and not self._streaming:
             typed_cmd = text.split()[0][1:] if text else ""
             lines: list[str] = []
@@ -356,14 +358,14 @@ class AISidebar(Widget):
 
     def _handle_input_submit(self) -> None:
         """Handle Enter key to submit the input."""
-        text_area = self.query_one("#ai-input", TextArea)
-        text = text_area.text.strip()
+        input_widget = self.query_one("#ai-input", Input)
+        text = input_widget.value.strip()
         if not text or self._streaming:
             return
         if not self._ready_for_questions:
             self.show_index_blocked_hint()
             return
-        text_area.clear()
+        input_widget.value = ""
         self.query_one("#slash-hint", Label).display = False
 
         expanded = expand_slash_command(text)
@@ -371,13 +373,9 @@ class AISidebar(Widget):
 
         self.post_message(self.ChatMessageSent(final_text))
 
-    def on_key(self, event: Key) -> None:
-        """Handle Enter key to submit when TextArea is focused."""
-        if event.key == "enter":
-            text_area = self.query_one("#ai-input", TextArea)
-            if text_area.has_focus:
-                event.stop()
-                self._handle_input_submit()
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "ai-input":
+            self._handle_input_submit()
 
     # ── Quick prompts ────────────────────────────────────────────
 
@@ -577,7 +575,7 @@ class AISidebar(Widget):
 
     def _focus_input(self) -> None:
         try:
-            self.query_one("#ai-input", TextArea).focus()
+            self.query_one("#ai-input", Input).focus()
         except Exception:
             pass
 
@@ -587,7 +585,7 @@ class AISidebar(Widget):
         label = self.query_one("#rag-status", Label)
         label.update(text)
         self._ready_for_questions = ready
-        input_widget = self.query_one("#ai-input", TextArea)
+        input_widget = self.query_one("#ai-input", Input)
         input_widget.disabled = not ready
         input_widget.placeholder = (
             "Ask about the book... (/ for commands)"
