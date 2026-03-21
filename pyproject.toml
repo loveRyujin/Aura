@@ -2,7 +2,24 @@
 name = "aura"
 version = "0.1.0"
 description = "A modern TUI PDF reader with AI assistant"
+readme = "README.md"
 requires-python = ">=3.13"
+authors = [
+    { name = "lichen", email = "1725350830@qq.com" },
+]
+keywords = ["pdf", "tui", "textual", "reader", "llm", "rag"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business :: Office Suites",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: Markup",
+    "Topic :: Utilities",
+]
 dependencies = [
     "textual>=2.0.0",
     "textual-image[textual]>=0.8.0",
@@ -19,6 +36,11 @@ dependencies = [
 [project.optional-dependencies]
 build = ["pyinstaller>=6.0"]
 test = ["pytest>=8.0"]
+
+[project.urls]
+Homepage = "https://github.com/loveRyujin/Aura"
+Repository = "https://github.com/loveRyujin/Aura"
+Issues = "https://github.com/loveRyujin/Aura/issues"
 
 [project.scripts]
 aura = "aura.__main__:main"

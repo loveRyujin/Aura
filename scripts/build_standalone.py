@@ -1,10 +1,11 @@
 """Build script to package Aura as a standalone executable via PyInstaller."""
 
+import litellm
 import PyInstaller.__main__
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).parent
+ROOT = Path(__file__).resolve().parent.parent
 
 
 def build() -> None:
@@ -14,6 +15,7 @@ def build() -> None:
         "--onefile",
         "--console",
         f"--add-data={ROOT / 'aura' / 'styles' / 'app.tcss'}:aura/styles",
+        "--collect-all=litellm",
         "--hidden-import=aura",
         "--hidden-import=aura.app",
         "--hidden-import=aura.config",

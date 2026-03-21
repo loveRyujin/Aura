@@ -2,7 +2,7 @@
 
 A modern terminal-based PDF reader built with [Textual](https://textual.textualize.io/), featuring an integrated AI assistant for analyzing and summarizing book content.
 
-> **Status:** This project is under development.
+> **Status:** Alpha preview. Core features are usable, but the project is still evolving.
 > **Note:** The author is still learning the related terminal graphics protocols.
 
 ## Features
@@ -67,10 +67,18 @@ Package Aura as a single binary that runs without Python installed:
 uv sync --extra build
 
 # Build the executable
-uv run python build.py
+uv run python scripts/build_standalone.py
 
 # The binary is at dist/aura
 ./dist/aura path/to/file.pdf
+```
+
+## Build Python Packages
+
+Build a source distribution and wheel for local verification:
+
+```bash
+uv build
 ```
 
 ## Keybindings
@@ -160,7 +168,3 @@ If the PDF file changes, Aura detects the change and rebuilds the index before a
 - **[PyMuPDF4LLM](https://pymupdf.readthedocs.io/en/latest/pymupdf4llm/)** - PDF to Markdown conversion
 - **[textual-image](https://github.com/lnqs/textual-image)** - Terminal graphics protocol support (Sixel / Kitty TGP / Halfcell)
 - **[LiteLLM](https://docs.litellm.ai/)** - Unified LLM API gateway
-
-## License
-
-MIT
