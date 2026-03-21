@@ -46,3 +46,24 @@ class TestBookmarkManager:
 
             pages = [item.page for item in manager.list_bookmarks("/tmp/book.pdf")]
             assert pages == [2, 10]
+
+    def test_update_bookmark_title(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = BookmarkManager(Path(tmpdir) / "bookmarks.json")
+
+            manager.add_bookmark("/tmp/book.pdf", 3, "Old")
+            updated = manager.update_bookmark("/tmp/book.pdf", 3, "New")
+
+            assert updated is not None
+            assert updated.title == "New"
+            assert manager.get_bookmark("/tmp/book.pdf", 3).title == "New"
+
+    def test_update_bookmark_rejects_blank_title(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = BookmarkManager(Path(tmpdir) / "bookmarks.json")
+
+            manager.add_bookmark("/tmp/book.pdf", 3, "Old")
+            updated = manager.update_bookmark("/tmp/book.pdf", 3, "   ")
+
+            assert updated is None
+            assert manager.get_bookmark("/tmp/book.pdf", 3).title == "Old"

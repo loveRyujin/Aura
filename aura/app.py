@@ -28,6 +28,12 @@ _INDEX_READY_MSG = "索引已就绪，可以开始提问"
 _INDEX_STALE_MSG = "文档已变更，正在重建索引，请稍候"
 
 
+class _BookmarkAction:
+    def __init__(self, action: str, page: int) -> None:
+        self.action = action
+        self.page = page
+
+
 class _BookmarkItem(ListItem):
     """A single bookmark entry."""
 
@@ -39,7 +45,7 @@ class _BookmarkItem(ListItem):
         yield Label(f"[b]p.{self.bookmark.page + 1}[/b]  {self.bookmark.title}")
 
 
-class _BookmarksScreen(ModalScreen[int | None]):
+class _BookmarksScreen(ModalScreen[int | _BookmarkAction | None]):
     """Modal to jump to a bookmark in the current book."""
 
     DEFAULT_CSS = """
@@ -62,7 +68,11 @@ class _BookmarksScreen(ModalScreen[int | None]):
     }
     """
 
-    BINDINGS = [("escape", "cancel", "Cancel")]
+    BINDINGS = [
+        ("escape", "cancel", "Cancel"),
+        ("e", "edit_selected", "Edit"),
+        ("d", "delete_selected", "Delete"),
+    ]
 
     def __init__(self, bookmarks: list[Bookmark]) -> None:
         super().__init__()
@@ -82,6 +92,65 @@ class _BookmarksScreen(ModalScreen[int | None]):
         item = event.item
         if isinstance(item, _BookmarkItem):
             self.dismiss(item.bookmark.page)
+
+    def _selected_item(self) -> _BookmarkItem | None:
+        try:
+            list_view = self.query_one("#bookmarks-list", ListView)
+        except Exception:
+            return None
+        item = list_view.highlighted_child
+        return item if isinstance(item, _BookmarkItem) else None
+
+    def action_edit_selected(self) -> None:
+        item = self._selected_item()
+        if item:
+            self.dismiss(_BookmarkAction("edit", item.bookmark.page))
+
+    def action_delete_selected(self) -> None:
+        item = self._selected_item()
+        if item:
+            self.dismiss(_BookmarkAction("delete", item.bookmark.page))
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+class _EditBookmarkScreen(ModalScreen[str | None]):
+    """Modal to edit a bookmark title."""
+
+    DEFAULT_CSS = """
+    _EditBookmarkScreen {
+        align: center middle;
+    }
+
+    _EditBookmarkScreen #bookmark-edit-container {
+        width: 60;
+        height: auto;
+        border: thick $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    """
+
+    BINDINGS = [("escape", "cancel", "Cancel")]
+
+    def __init__(self, title: str) -> None:
+        super().__init__()
+        self._title = title
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="bookmark-edit-container"):
+            yield Label("Edit bookmark title:")
+            yield TextInput(value=self._title, id="bookmark-title-input")
+
+    def on_mount(self) -> None:
+        input_widget = self.query_one("#bookmark-title-input", TextInput)
+        input_widget.focus()
+        input_widget.action_end()
+
+    def on_input_submitted(self, event: TextInput.Submitted) -> None:
+        value = event.value.strip()
+        self.dismiss(value or None)
 
     def action_cancel(self) -> None:
         self.dismiss(None)
@@ -237,6 +306,7 @@ class AuraApp(App):
         ("slash", "search", "Search"),
         ("g", "go_to_page", "Go to"),
         ("m", "toggle_bookmark", "Bookmark"),
+        ("M", "edit_bookmark", "Edit Bookmark"),
         ("B", "show_bookmarks", "Bookmarks"),
         ("right,n", "next_page", "Next"),
         ("left,b", "prev_page", "Prev"),
@@ -530,6 +600,12 @@ class AuraApp(App):
         )
         viewer.set_bookmarked(is_marked)
 
+    def _default_bookmark_title(self, engine: PDFEngine, page: int) -> str:
+        section = engine.get_section_for_page(page).strip()
+        if section:
+            return f"{section} (p.{page + 1})"
+        return f"{engine.filename} (p.{page + 1})"
+
     def _activate_session(self, session) -> None:
         self._session_mgr.set_active(session)
         self._ai_service.bind_session(session)
@@ -604,8 +680,7 @@ class AuraApp(App):
             return
 
         page = viewer.current_page
-        section = viewer.engine.get_section_for_page(page)
-        title = section or f"{viewer.engine.filename} p.{page + 1}"
+        title = self._default_bookmark_title(viewer.engine, page)
         added = self._bookmarks.toggle_bookmark(
             str(viewer.engine._path),
             page,
@@ -616,6 +691,29 @@ class AuraApp(App):
             self.notify(f"Bookmarked p.{page + 1}.", severity="information")
         else:
             self.notify(f"Removed bookmark from p.{page + 1}.", severity="information")
+
+    def action_edit_bookmark(self) -> None:
+        viewer = self.query_one(PDFViewer)
+        if not viewer.engine:
+            self.notify("No PDF loaded.", severity="warning")
+            return
+
+        bookmark = self._bookmarks.get_bookmark(
+            str(viewer.engine._path),
+            viewer.current_page,
+        )
+        if not bookmark:
+            self.notify("No bookmark on the current page.", severity="warning")
+            return
+
+        self.push_screen(
+            _EditBookmarkScreen(bookmark.title),
+            callback=lambda title: self._on_bookmark_title_edited(
+                str(viewer.engine._path),
+                viewer.current_page,
+                title,
+            ),
+        )
 
     def action_show_bookmarks(self) -> None:
         viewer = self.query_one(PDFViewer)
@@ -628,9 +726,52 @@ class AuraApp(App):
             callback=self._on_bookmark_selected,
         )
 
-    def _on_bookmark_selected(self, page: int | None) -> None:
+    def _on_bookmark_selected(self, result) -> None:
+        if result is None:
+            return
+        if isinstance(result, _BookmarkAction):
+            viewer = self.query_one(PDFViewer)
+            if not viewer.engine:
+                return
+            book_path = str(viewer.engine._path)
+            if result.action == "delete":
+                removed = self._bookmarks.remove_bookmark(book_path, result.page)
+                if removed:
+                    self._update_bookmark_indicator()
+                    self.notify(
+                        f"Removed bookmark from p.{result.page + 1}.",
+                        severity="information",
+                    )
+            elif result.action == "edit":
+                bookmark = self._bookmarks.get_bookmark(book_path, result.page)
+                if bookmark:
+                    self.push_screen(
+                        _EditBookmarkScreen(bookmark.title),
+                        callback=lambda title: self._on_bookmark_title_edited(
+                            book_path,
+                            result.page,
+                            title,
+                        ),
+                    )
+            return
+        page = result
         if page is not None:
             self.query_one(PDFViewer).go_to_page(page)
+
+    def _on_bookmark_title_edited(
+        self,
+        book_path: str,
+        page: int,
+        title: str | None,
+    ) -> None:
+        if not title:
+            return
+        updated = self._bookmarks.update_bookmark(book_path, page, title)
+        if updated:
+            self.notify(
+                f"Updated bookmark for p.{page + 1}.",
+                severity="information",
+            )
 
     def _on_file_selected(self, path: Path | None) -> None:
         if path:

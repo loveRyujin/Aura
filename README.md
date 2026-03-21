@@ -89,6 +89,7 @@ uv build
 | `t`        | Toggle TOC panel                   |
 | `a`        | Toggle AI sidebar                  |
 | `m`        | Toggle bookmark for current page   |
+| `M`        | Edit current bookmark title        |
 | `B`        | Open bookmark list                 |
 | `Ctrl+N`   | New chat session                   |
 | `Ctrl+R`   | Rename current session            |
@@ -160,6 +161,8 @@ Aura uses [LiteLLM](https://docs.litellm.ai/) under the hood, supporting 100+ LL
 Aura automatically builds a local retrieval index the first time you open a PDF. While indexing is running, AI questions are disabled and the sidebar shows progress. Once complete, later opens of the same file reuse the local index automatically.
 
 If the PDF file changes, Aura detects the change and rebuilds the index before allowing new questions.
+
+In the bookmark list, `Enter` jumps to the selected bookmark, `e` edits its title, and `d` removes it.
 
 ## Tech Stack
 

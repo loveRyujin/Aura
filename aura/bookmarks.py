@@ -54,6 +54,24 @@ class BookmarkManager:
         self._save_all(records)
         return bookmark
 
+    def update_bookmark(
+        self,
+        book_path: str,
+        page: int,
+        title: str,
+    ) -> Bookmark | None:
+        records = self._load_all()
+        cleaned = title.strip()
+        if not cleaned:
+            return None
+
+        for item in records:
+            if item.book_path == book_path and item.page == page:
+                item.title = cleaned
+                self._save_all(records)
+                return item
+        return None
+
     def remove_bookmark(self, book_path: str, page: int) -> bool:
         records = self._load_all()
         filtered = [
