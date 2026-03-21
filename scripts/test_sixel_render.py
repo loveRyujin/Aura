@@ -16,7 +16,7 @@ from textual.widgets import Footer, Header, Static
 from textual_image.widget.sixel import Image as SixelImage
 
 
-class TestApp(App):
+class RenderApp(App):
     CSS = """
     Screen { layout: vertical; }
     #status { dock: bottom; height: 1; }
@@ -58,7 +58,7 @@ def main() -> None:
                 img.putpixel((x, y), (x % 256, y % 256, (x + y) % 256))
         print("Using synthetic test image 800x600")
 
-    app = TestApp(img)
+    app = RenderApp(img)
     app.run()
 
 

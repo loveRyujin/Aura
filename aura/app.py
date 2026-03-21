@@ -14,6 +14,7 @@ from aura.ai_service import AIService
 from aura.config import AppConfig
 from aura.pdf_engine import PDFEngine
 from aura.rag import RAGService
+from aura.recent_files import RecentFileManager
 from aura.session import SessionManager
 from aura.widgets.ai_sidebar import AISidebar
 from aura.widgets.file_dialog import FileDialog
@@ -185,6 +186,7 @@ class AuraApp(App):
         self.config = config or AppConfig.load()
         self._ai_service = AIService(self.config.ai)
         self._rag_service = RAGService(self.config.embedding)
+        self._recent_files = RecentFileManager()
         self._session_mgr = SessionManager()
         self._ai_worker: Worker | None = None
         self._rag_indexing = False
@@ -236,6 +238,7 @@ class AuraApp(App):
         sidebar.rebuild_chat(session)
 
         self.sub_title = f"{engine.filename}  p.{start_page + 1}/{engine.page_count}"
+        self._recent_files.record_open(str(path), current_page=start_page)
 
         status = self._rag_service.get_index_status(str(path))
         if status.ready:
@@ -271,6 +274,11 @@ class AuraApp(App):
             if session:
                 session.current_page = event.page
                 self._session_mgr.save_session(session)
+            if self._active_book_path:
+                self._recent_files.update_progress(
+                    self._active_book_path,
+                    event.page,
+                )
             sidebar.update_context_info(
                 page=event.page,
                 section=viewer.engine.get_section_for_page(event.page),
@@ -503,7 +511,16 @@ class AuraApp(App):
             self.query_one(PDFViewer).go_to_page(page)
 
     def action_open_file(self) -> None:
-        self.push_screen(FileDialog(), callback=self._on_file_selected)
+        viewer = self.query_one(PDFViewer)
+        if viewer.engine:
+            start_dir = Path(str(viewer.engine._path)).parent
+        else:
+            start_dir = self._recent_files.most_recent_dir() or Path.home()
+        recent = self._recent_files.list_recent()
+        self.push_screen(
+            FileDialog(start_dir=start_dir, recent_files=recent),
+            callback=self._on_file_selected,
+        )
 
     def _on_file_selected(self, path: Path | None) -> None:
         if path:

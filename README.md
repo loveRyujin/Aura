@@ -16,6 +16,7 @@ A modern terminal-based PDF reader built with [Textual](https://textual.textuali
 - **Session Management** - Create, rename, delete, and switch between per-book chat sessions
 - **Multi-LLM Support** - OpenAI, Anthropic, Ollama, and 100+ providers via LiteLLM
 - **File Browser** - Open any PDF with the built-in file dialog
+- **Recent Files** - Reopen recently viewed PDFs and keep reading progress
 - **Standalone Build** - Package as a single executable with PyInstaller
 
 ## Requirements

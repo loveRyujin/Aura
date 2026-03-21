@@ -156,6 +156,7 @@ class PDFViewer(Widget):
         self._engine: PDFEngine | None = None
         self._loaded_pages: set[int] = set()
         self._render_seq: int = 0
+        self._text_render_seq: int = 0
 
     def compose(self) -> ComposeResult:
         yield Label("Press [b]o[/b] to open a PDF file", id="welcome-label")
@@ -242,7 +243,8 @@ class PDFViewer(Widget):
         elif self.scroll_mode == ScrollMode.PAGINATED:
             img_widget.display = False
             md_widget.display = True
-            md_widget.update(self._engine.get_page_markdown(self.current_page))
+            md_widget.update("Loading page...")
+            self._schedule_text_render(self.current_page)
         else:
             img_widget.display = False
             md_widget.display = False
@@ -261,7 +263,8 @@ class PDFViewer(Widget):
         if not self._engine:
             return
         md_widget = self.query_one("#pdf-content", Markdown)
-        md_widget.update(self._engine.get_page_markdown(self.current_page))
+        md_widget.update("Loading page...")
+        self._schedule_text_render(self.current_page)
         self.query_one("#pdf-scroll").scroll_home(animate=False)
 
     # ── Continuous-mode helpers ──────────────────────────────────
@@ -375,6 +378,34 @@ class PDFViewer(Widget):
         img_widget = self.query_one("#pdf-image", TIImage)
         img_widget.image = pil_img
         self.query_one("#pdf-scroll").scroll_home(animate=False)
+
+    async def _render_text_async(self, page: int, seq: int) -> None:
+        """Render a text page in the background to avoid UI stalls."""
+        if not self._engine:
+            return
+
+        import asyncio
+
+        engine = self._engine
+        markdown = await asyncio.to_thread(engine.get_page_markdown, page)
+        if (
+            seq != self._text_render_seq
+            or not self._engine
+            or self.current_page != page
+            or self.view_mode != ViewMode.TEXT
+            or self.scroll_mode != ScrollMode.PAGINATED
+        ):
+            return
+        self.query_one("#pdf-content", Markdown).update(markdown)
+        self.query_one("#pdf-scroll").scroll_home(animate=False)
+
+    def _schedule_text_render(self, page: int) -> None:
+        self._text_render_seq += 1
+        seq = self._text_render_seq
+        self.app.run_worker(
+            self._render_text_async(page, seq),
+            exclusive=True,
+        )
 
     # ── Debounced rendering ──────────────────────────────────────
 
