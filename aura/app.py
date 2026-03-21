@@ -7,10 +7,11 @@ from pathlib import Path
 from textual.app import App, ComposeResult
 from textual.containers import Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Footer, Header, Input as TextInput, Label
+from textual.widgets import Footer, Header, Input as TextInput, Label, ListItem, ListView
 from textual.worker import Worker
 
 from aura.ai_service import AIService
+from aura.bookmarks import Bookmark, BookmarkManager
 from aura.config import AppConfig
 from aura.pdf_engine import PDFEngine
 from aura.rag import RAGService
@@ -25,6 +26,65 @@ from aura.widgets.toc_panel import TOCPanel
 _INDEX_BUILDING_MSG = "正在为本书建立检索索引，请等待完成后再提问"
 _INDEX_READY_MSG = "索引已就绪，可以开始提问"
 _INDEX_STALE_MSG = "文档已变更，正在重建索引，请稍候"
+
+
+class _BookmarkItem(ListItem):
+    """A single bookmark entry."""
+
+    def __init__(self, bookmark: Bookmark) -> None:
+        super().__init__()
+        self.bookmark = bookmark
+
+    def compose(self) -> ComposeResult:
+        yield Label(f"[b]p.{self.bookmark.page + 1}[/b]  {self.bookmark.title}")
+
+
+class _BookmarksScreen(ModalScreen[int | None]):
+    """Modal to jump to a bookmark in the current book."""
+
+    DEFAULT_CSS = """
+    _BookmarksScreen {
+        align: center middle;
+    }
+
+    _BookmarksScreen #bookmarks-container {
+        width: 70%;
+        height: 60%;
+        border: thick $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+
+    _BookmarksScreen #bookmarks-title {
+        text-style: bold;
+        padding: 1 0;
+        color: $accent;
+    }
+    """
+
+    BINDINGS = [("escape", "cancel", "Cancel")]
+
+    def __init__(self, bookmarks: list[Bookmark]) -> None:
+        super().__init__()
+        self._bookmarks = bookmarks
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="bookmarks-container"):
+            yield Label("Bookmarks", id="bookmarks-title")
+            if self._bookmarks:
+                with ListView(id="bookmarks-list"):
+                    for item in self._bookmarks:
+                        yield _BookmarkItem(item)
+            else:
+                yield Label("No bookmarks for this document yet.")
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        item = event.item
+        if isinstance(item, _BookmarkItem):
+            self.dismiss(item.bookmark.page)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
 
 
 class _GoToPageScreen(ModalScreen[int | None]):
@@ -176,6 +236,8 @@ class AuraApp(App):
         ("c", "toggle_scroll", "Scroll"),
         ("slash", "search", "Search"),
         ("g", "go_to_page", "Go to"),
+        ("m", "toggle_bookmark", "Bookmark"),
+        ("B", "show_bookmarks", "Bookmarks"),
         ("right,n", "next_page", "Next"),
         ("left,b", "prev_page", "Prev"),
     ]
@@ -185,6 +247,7 @@ class AuraApp(App):
         self.file_path = file_path
         self.config = config or AppConfig.load()
         self._ai_service = AIService(self.config.ai)
+        self._bookmarks = BookmarkManager()
         self._rag_service = RAGService(self.config.embedding)
         self._recent_files = RecentFileManager()
         self._session_mgr = SessionManager()
@@ -239,6 +302,7 @@ class AuraApp(App):
 
         self.sub_title = f"{engine.filename}  p.{start_page + 1}/{engine.page_count}"
         self._recent_files.record_open(str(path), current_page=start_page)
+        self._update_bookmark_indicator()
 
         status = self._rag_service.get_index_status(str(path))
         if status.ready:
@@ -279,6 +343,7 @@ class AuraApp(App):
                     self._active_book_path,
                     event.page,
                 )
+            self._update_bookmark_indicator()
             sidebar.update_context_info(
                 page=event.page,
                 section=viewer.engine.get_section_for_page(event.page),
@@ -455,6 +520,16 @@ class AuraApp(App):
         active_id = active.id if active else ""
         self.query_one(AISidebar).refresh_session_list(sessions, active_id)
 
+    def _update_bookmark_indicator(self) -> None:
+        viewer = self.query_one(PDFViewer)
+        if not viewer.engine:
+            return
+        is_marked = self._bookmarks.is_bookmarked(
+            str(viewer.engine._path),
+            viewer.current_page,
+        )
+        viewer.set_bookmarked(is_marked)
+
     def _activate_session(self, session) -> None:
         self._session_mgr.set_active(session)
         self._ai_service.bind_session(session)
@@ -521,6 +596,41 @@ class AuraApp(App):
             FileDialog(start_dir=start_dir, recent_files=recent),
             callback=self._on_file_selected,
         )
+
+    def action_toggle_bookmark(self) -> None:
+        viewer = self.query_one(PDFViewer)
+        if not viewer.engine:
+            self.notify("No PDF loaded.", severity="warning")
+            return
+
+        page = viewer.current_page
+        section = viewer.engine.get_section_for_page(page)
+        title = section or f"{viewer.engine.filename} p.{page + 1}"
+        added = self._bookmarks.toggle_bookmark(
+            str(viewer.engine._path),
+            page,
+            title,
+        )
+        self._update_bookmark_indicator()
+        if added:
+            self.notify(f"Bookmarked p.{page + 1}.", severity="information")
+        else:
+            self.notify(f"Removed bookmark from p.{page + 1}.", severity="information")
+
+    def action_show_bookmarks(self) -> None:
+        viewer = self.query_one(PDFViewer)
+        if not viewer.engine:
+            self.notify("No PDF loaded.", severity="warning")
+            return
+        bookmarks = self._bookmarks.list_bookmarks(str(viewer.engine._path))
+        self.push_screen(
+            _BookmarksScreen(bookmarks),
+            callback=self._on_bookmark_selected,
+        )
+
+    def _on_bookmark_selected(self, page: int | None) -> None:
+        if page is not None:
+            self.query_one(PDFViewer).go_to_page(page)
 
     def _on_file_selected(self, path: Path | None) -> None:
         if path:

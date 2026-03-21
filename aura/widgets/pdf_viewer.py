@@ -81,6 +81,7 @@ class PageIndicator(Static):
     total = reactive(0)
     mode = reactive(ViewMode.TEXT)
     scroll_mode = reactive(ScrollMode.PAGINATED)
+    bookmarked = reactive(False)
 
     def render(self) -> str:
         if self.total == 0:
@@ -90,9 +91,11 @@ class PageIndicator(Static):
         else:
             mode_label = _renderer_label()
         scroll_label = "SCROLL" if self.scroll_mode == ScrollMode.CONTINUOUS else "PAGE"
+        bookmark_label = "  BM" if self.bookmarked else ""
         return (
             f" Page {self.page + 1}/{self.total}"
             f"  [{mode_label}]  [{scroll_label}]"
+            f"{bookmark_label}"
             f"  [v]view [c]scroll "
         )
 
@@ -209,6 +212,9 @@ class PDFViewer(Widget):
     def watch_scroll_mode(self, _value: ScrollMode) -> None:
         self.query_one(PageIndicator).scroll_mode = _value
         self._rebuild()
+
+    def set_bookmarked(self, bookmarked: bool) -> None:
+        self.query_one(PageIndicator).bookmarked = bookmarked
 
     # ── Mode toggles ─────────────────────────────────────────────
 
